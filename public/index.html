@@ -3,131 +3,126 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Nativa Prototype</title>
+    <title>Nativa</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="app-shell">
-      <section class="workspace" aria-label="Nativa interpreter">
+      <section class="workspace" aria-label="Nativa prototype">
         <header class="topbar">
-          <div class="brand">
-            <img src="/nativa.png" alt="" class="brand-mark">
-            <div>
+          <div class="brand-block">
+            <div class="brand-row">
+              <img src="/nativa.png" alt="" class="brand-mark">
               <h1>NATIVA</h1>
-              <p>Your voice, any language</p>
+            </div>
+            <div class="connection-line">
+              <span id="languagePair">RU -> EN</span>
+              <span class="status-badge" id="connectionBadge">
+                <span></span>
+                <b>Checking</b>
+              </span>
             </div>
           </div>
-          <div class="status-pill" id="configStatus">Checking API keys</div>
+
+          <nav class="mode-switch" aria-label="Interface mode">
+            <button class="active" id="voiceModeButton" type="button">Voice</button>
+            <button id="debugModeButton" type="button">Debug</button>
+          </nav>
         </header>
 
-        <section class="controls">
-          <div class="field">
-            <label for="sourceLang">From</label>
-            <select id="sourceLang">
-              <option>English</option>
-              <option>Russian</option>
-              <option>Uzbek</option>
-            </select>
-          </div>
-
-          <button class="swap-button" id="swapButton" type="button" title="Swap languages" aria-label="Swap languages">
-            ⇄
-          </button>
-
-          <div class="field">
-            <label for="targetLang">To</label>
-            <select id="targetLang">
-              <option>Russian</option>
-              <option>English</option>
-              <option>Uzbek</option>
-            </select>
-          </div>
-
-          <button class="record-button" id="recordButton" type="button">
-            <span class="record-dot"></span>
-            <span id="recordLabel">Start</span>
-          </button>
-        </section>
-
-        <section class="voice-tools" aria-label="Voice clone">
-          <button id="cloneButton" type="button">Record 10s voice clone</button>
-          <span id="cloneStatus">Using self-hosted voice pipeline.</span>
-        </section>
-
-        <section class="meter-row" aria-label="Voice activity">
-          <div class="meter">
-            <span id="levelBar"></span>
-          </div>
-          <div class="vad-state" id="vadState">Mic idle</div>
-        </section>
-
-        <section class="panels">
-          <article class="panel">
-            <h2>Transcript</h2>
-            <p id="transcript">Waiting for speech.</p>
-          </article>
-          <article class="panel">
-            <h2>Translation</h2>
-            <p id="translation">Audio playback will start after the first self-hosted TTS chunk.</p>
-          </article>
-        </section>
-
-        <section class="metrics" aria-label="Latency metrics">
-          <div class="metric">
-            <span>t1 Whisper</span>
-            <strong id="metricT1">-</strong>
-          </div>
-          <div class="metric">
-            <span>t2 GPT-4o</span>
-            <strong id="metricT2">-</strong>
-          </div>
-          <div class="metric">
-            <span>t3 TTS first chunk</span>
-            <strong id="metricT3">-</strong>
-          </div>
-          <div class="metric total">
-            <span>Total</span>
-            <strong id="metricTotal">-</strong>
-          </div>
-        </section>
-
-        <section class="history">
-          <div class="history-head">
-            <h2>Last turns</h2>
-            <div class="history-actions">
-              <button id="exportCsv" type="button">Export CSV</button>
-              <button id="clearHistory" type="button">Clear</button>
+        <section class="view active" id="voiceView" aria-label="Voice Interface">
+          <div class="visualizer-shell">
+            <div class="visualizer" id="voiceVisualizer" aria-label="Voice visualizer"></div>
+            <div class="state-line">
+              <span id="pipelineState">idle</span>
+              <span id="activeSpeaker">idle</span>
             </div>
           </div>
-          <ol id="historyList"></ol>
+
+          <section class="voice-controls" aria-label="Voice controls">
+            <button class="primary-button" id="recordButton" type="button">
+              <span class="record-dot"></span>
+              <span id="recordLabel">START</span>
+            </button>
+            <div class="vad-readout">VAD: <strong id="vadState">silent</strong></div>
+            <div class="language-controls">
+              <label>
+                <span>From</span>
+                <select id="sourceLang">
+                  <option value="Russian" selected>RU</option>
+                  <option value="English">EN</option>
+                  <option value="Uzbek">UZ</option>
+                </select>
+              </label>
+              <button class="icon-button" id="swapButton" type="button" title="Swap languages" aria-label="Swap languages">↔</button>
+              <label>
+                <span>To</span>
+                <select id="targetLang">
+                  <option value="English" selected>EN</option>
+                  <option value="Russian">RU</option>
+                  <option value="Uzbek">UZ</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="replica-history" aria-label="Replica history">
+            <div class="section-head">
+              <h2>ReplicaHistory</h2>
+              <button id="clearHistory" type="button">Clear</button>
+            </div>
+            <ol id="historyList">
+              <li class="empty">No replicas yet.</li>
+            </ol>
+          </section>
         </section>
 
-        <section class="run-log" aria-label="Latency table">
-          <div class="history-head">
-            <h2>Latency table</h2>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Transcript</th>
-                  <th>Translation</th>
-                  <th>t1</th>
-                  <th>t2</th>
-                  <th>t3</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody id="runTableBody">
-                <tr>
-                  <td colspan="9">No runs yet.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <section class="view debug-grid" id="debugView" aria-label="Debug Console">
+          <section class="latency-panel" aria-label="Latency table">
+            <div class="section-head">
+              <h2>LatencyTable</h2>
+              <div class="debug-actions">
+                <button id="runKTests" type="button">Run K-Tests</button>
+                <button id="exportCsv" type="button">Export CSV</button>
+              </div>
+            </div>
+            <div class="summary-grid">
+              <div><span>STT</span><strong id="metricStt">-</strong></div>
+              <div><span>Trans</span><strong id="metricTranslate">-</strong></div>
+              <div><span>TTS</span><strong id="metricTts">-</strong></div>
+              <div><span>Total</span><strong id="metricTotal">-</strong></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Case</th>
+                    <th>STT</th>
+                    <th>Trans</th>
+                    <th>TTS</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="latencyRows">
+                  <tr><td colspan="7">No runs yet.</td></tr>
+                </tbody>
+                <tfoot id="latencyStats"></tfoot>
+              </table>
+            </div>
+          </section>
+
+          <section class="console-panel" aria-label="Debug log">
+            <div class="section-head">
+              <h2>DebugConsole</h2>
+              <button id="clearLog" type="button">Clear</button>
+            </div>
+            <div class="debug-console" id="debugConsole"></div>
+          </section>
         </section>
       </section>
     </main>

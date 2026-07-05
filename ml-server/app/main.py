@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
@@ -6,6 +7,13 @@ from app.schemas import TranslateRequest, TranslateResponse, VoiceCloneResponse
 from app.services import SttService, TranslationService, TtsService, VoiceCloneService
 
 app = FastAPI(title="NATIVA ML Server", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 stt_service = SttService(mode=settings.mode)
 translation_service = TranslationService(mode=settings.mode)
