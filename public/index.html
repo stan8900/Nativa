@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nativa Prototype</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="Nativa interpreter">
+        <header class="topbar">
+          <div class="brand">
+            <img src="/nativa.png" alt="" class="brand-mark">
+            <div>
+              <h1>NATIVA</h1>
+              <p>Your voice, any language</p>
+            </div>
+          </div>
+          <div class="status-pill" id="configStatus">Checking API keys</div>
+        </header>
+
+        <section class="controls">
+          <div class="field">
+            <label for="sourceLang">From</label>
+            <select id="sourceLang">
+              <option>English</option>
+              <option>Russian</option>
+              <option>Uzbek</option>
+            </select>
+          </div>
+
+          <button class="swap-button" id="swapButton" type="button" title="Swap languages" aria-label="Swap languages">
+            ⇄
+          </button>
+
+          <div class="field">
+            <label for="targetLang">To</label>
+            <select id="targetLang">
+              <option>Russian</option>
+              <option>English</option>
+              <option>Uzbek</option>
+            </select>
+          </div>
+
+          <button class="record-button" id="recordButton" type="button">
+            <span class="record-dot"></span>
+            <span id="recordLabel">Start</span>
+          </button>
+        </section>
+
+        <section class="voice-tools" aria-label="Voice clone">
+          <button id="cloneButton" type="button">Record 10s voice clone</button>
+          <span id="cloneStatus">Using self-hosted voice pipeline.</span>
+        </section>
+
+        <section class="meter-row" aria-label="Voice activity">
+          <div class="meter">
+            <span id="levelBar"></span>
+          </div>
+          <div class="vad-state" id="vadState">Mic idle</div>
+        </section>
+
+        <section class="panels">
+          <article class="panel">
+            <h2>Transcript</h2>
+            <p id="transcript">Waiting for speech.</p>
+          </article>
+          <article class="panel">
+            <h2>Translation</h2>
+            <p id="translation">Audio playback will start after the first self-hosted TTS chunk.</p>
+          </article>
+        </section>
+
+        <section class="metrics" aria-label="Latency metrics">
+          <div class="metric">
+            <span>t1 Whisper</span>
+            <strong id="metricT1">-</strong>
+          </div>
+          <div class="metric">
+            <span>t2 GPT-4o</span>
+            <strong id="metricT2">-</strong>
+          </div>
+          <div class="metric">
+            <span>t3 TTS first chunk</span>
+            <strong id="metricT3">-</strong>
+          </div>
+          <div class="metric total">
+            <span>Total</span>
+            <strong id="metricTotal">-</strong>
+          </div>
+        </section>
+
+        <section class="history">
+          <div class="history-head">
+            <h2>Last turns</h2>
+            <div class="history-actions">
+              <button id="exportCsv" type="button">Export CSV</button>
+              <button id="clearHistory" type="button">Clear</button>
+            </div>
+          </div>
+          <ol id="historyList"></ol>
+        </section>
+
+        <section class="run-log" aria-label="Latency table">
+          <div class="history-head">
+            <h2>Latency table</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Transcript</th>
+                  <th>Translation</th>
+                  <th>t1</th>
+                  <th>t2</th>
+                  <th>t3</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="runTableBody">
+                <tr>
+                  <td colspan="9">No runs yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
