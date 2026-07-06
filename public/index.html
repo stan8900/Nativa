@@ -6,7 +6,7 @@
     <title>Nativa</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -15,7 +15,7 @@
         <header class="topbar">
           <div class="brand-block">
             <div class="brand-row">
-              <img src="/nativa.png" alt="" class="brand-mark">
+              <div class="logo-mark">N</div>
               <h1>NATIVA</h1>
             </div>
             <div class="connection-line">
@@ -35,15 +35,12 @@
 
         <section class="view active" id="voiceView" aria-label="Voice Interface">
           <div class="visualizer-shell">
-            <div class="visualizer" id="voiceVisualizer" aria-label="Voice visualizer"></div>
-            <div class="state-line">
-              <span id="pipelineState">idle</span>
-              <span id="activeSpeaker">idle</span>
-            </div>
+            <div class="visualizer visualizer-container" id="voiceVisualizer" aria-label="Voice visualizer"></div>
+            <p class="viz-status"><span id="pipelineState">idle</span><span id="activeSpeaker">idle</span></p>
           </div>
 
           <section class="voice-controls" aria-label="Voice controls">
-            <button class="primary-button" id="recordButton" type="button">
+            <button class="primary-button btn-start" id="recordButton" type="button">
               <span class="record-dot"></span>
               <span id="recordLabel">START</span>
             </button>
