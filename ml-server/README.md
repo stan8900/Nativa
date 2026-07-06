@@ -1,15 +1,6 @@
 # NATIVA ML Server
 
-Self-hosted ML backend for the NATIVA prototype. No OpenAI and no ElevenLabs.
-
-The web app calls this server through:
-
-- `POST /stt`
-- `POST /translate`
-- `POST /tts-stream`
-- `POST /voice-clone`
-
-Default mode is `mock`, so the full web pipeline can run before real models are installed.
+FastAPI backend for local STT, translation, voice cloning, and XTTS v2 speech synthesis.
 
 ## Run
 
@@ -21,85 +12,108 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Then run the web app from the repo root:
+Install `ffmpeg` for reliable browser audio/WebM conversion:
 
 ```bash
-npm run dev
+brew install ffmpeg
 ```
+
+First startup downloads model weights into `ml-server/models/`. XTTS v2 is roughly 2GB; progress is printed by Coqui TTS and server logs.
 
 ## Configuration
 
 ```bash
-NATIVA_ML_MODE=mock
-NATIVA_STT_ENGINE=faster-whisper
-NATIVA_TRANSLATION_ENGINE=nllb-200
-NATIVA_TTS_ENGINE=piper
-NATIVA_VOICE_ENGINE=speechbrain
+NATIVA_MODE=real
+NATIVA_WHISPER_MODEL_SIZE=base
+NATIVA_WHISPER_COMPUTE_TYPE=int8
+NATIVA_VOICES_DIR=./voices
+NATIVA_MODELS_DIR=./models
 ```
 
-Only `mock` is implemented in this scaffold. Real adapters should be added behind the same service interfaces.
+Device is selected automatically: `cuda` when `torch.cuda.is_available()` is true, otherwise `cpu`.
 
-## Model Roadmap
+## Endpoints
 
-Recommended implementation order:
-
-1. STT: `faster-whisper` first, `whisper.cpp` for CPU/edge experiments.
-2. Translation: `NLLB-200` or `M2M100` for EN/RU/UZ baseline, local LLM later for conversational nuance.
-3. TTS: `Piper` for fast baseline, `XTTS` or `StyleTTS2` for voice quality.
-4. Voice clone: speaker embedding with `SpeechBrain` or `resemblyzer`, then connect embedding to the chosen TTS.
-5. Streaming: return the first audio chunk as early as possible; do not wait for full synthesis.
-
-## Endpoint Contract
-
-### `POST /stt`
+### `POST /voice-clone`
 
 Multipart form:
 
-- `audio`: WebM/Opus from browser
-- `sourceLang`: `English`, `Russian`, or `Uzbek`
+- `audio`: WAV/WebM voice sample, at least 6 seconds
+
+Compatibility alias: `sample`.
 
 Response:
 
 ```json
-{ "text": "recognized speech" }
+{ "voice_id": "uuid4" }
 ```
 
-### `POST /translate`
-
-```json
-{
-  "sourceLang": "English",
-  "targetLang": "Russian",
-  "text": "Hello",
-  "history": []
-}
-```
-
-Response:
-
-```json
-{ "translation": "Привет" }
-```
+The normalized speaker reference is saved at `voices/{voice_id}.wav`.
 
 ### `POST /tts-stream`
 
 ```json
 {
   "text": "Привет",
-  "voiceId": "default"
+  "voice_id": "uuid4",
+  "language": "ru"
 }
 ```
 
-Response: chunked audio. The mock server returns `audio/wav`.
+Compatibility alias: `voiceId`.
 
-### `POST /voice-clone`
+Response: chunked `audio/wav` stream.
+
+### `POST /stt`
 
 Multipart form:
 
-- `sample`: 10 second voice sample
+- `audio`: WAV/WebM speech audio
+- `src_lang`: `ru` or `en`
+
+Compatibility alias: `sourceLang`.
 
 Response:
 
 ```json
-{ "voiceId": "speaker-..." }
+{ "text": "recognized speech", "language": "ru", "latency_ms": 1234 }
 ```
+
+### `POST /translate`
+
+```json
+{
+  "text": "Привет",
+  "src_lang": "ru",
+  "tgt_lang": "en"
+}
+```
+
+Compatibility aliases: `sourceLang`, `targetLang`.
+
+Response:
+
+```json
+{ "text": "Hello", "translation": "Hello", "latency_ms": 123 }
+```
+
+Supported pairs are `ru-en` and `en-ru` via Helsinki-NLP OPUS-MT.
+
+### `POST /pipeline`
+
+Multipart form:
+
+- `audio`: WAV/WebM speech audio
+- `voice_id`: saved voice sample id
+- `src_lang`: source language
+- `tgt_lang`: target language
+
+Response: chunked `audio/wav` stream with headers:
+
+- `X-Transcript`
+- `X-Translation`
+- `X-Latency-STT`
+- `X-Latency-Translate`
+- `X-Latency-TTS`
+
+Transcript and translation headers are URL-encoded so non-ASCII text is safe in HTTP headers.
