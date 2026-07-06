@@ -1,4 +1,4 @@
-const ML_SERVER = window.NATIVA_ML_SERVER_URL ?? 'http://localhost:8000';
+const ML_SERVER = '/api';
 
 export async function health() {
   const started = performance.now();

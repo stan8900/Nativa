@@ -53,7 +53,7 @@ const state = {
 
 const SILENCE_MS = 500;
 const MIN_RECORDING_MS = 450;
-const SPEECH_THRESHOLD = 0.035;
+const SPEECH_THRESHOLD = 0.003;
 const BAR_COUNT = 32;
 
 const K_TESTS = [
@@ -136,9 +136,9 @@ async function startListening() {
     state.visualizerMode = 'mic';
     state.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
       }
     });
 

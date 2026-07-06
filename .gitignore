@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 ml-server/models/
 ml-server/voices/*.wav
+localhost+*.pem
+localhost+*-key.pem

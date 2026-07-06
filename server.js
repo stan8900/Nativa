@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'node:fs';
+import https from 'node:https';
 import multer from 'multer';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,9 +19,31 @@ const upload = multer({
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 const ML_SERVER_BASE_URL = process.env.ML_SERVER_BASE_URL || 'http://127.0.0.1:8000';
+const ML_SERVER = ML_SERVER_BASE_URL;
 let activeVoiceId = process.env.DEFAULT_VOICE_ID || 'default';
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.post('/api/stt', async (req, res) => {
+  await proxyRequest(req, res, '/stt');
+});
+
+app.post('/api/translate', async (req, res) => {
+  await proxyRequest(req, res, '/translate');
+});
+
+app.post('/api/tts-stream', async (req, res) => {
+  await proxyRequest(req, res, '/tts-stream', { forceContentType: 'audio/wav', exposeXHeaders: true });
+});
+
+app.post('/api/voice-clone', async (req, res) => {
+  await proxyRequest(req, res, '/voice-clone');
+});
+
+app.post('/api/pipeline', async (req, res) => {
+  await proxyRequest(req, res, '/pipeline', { forceContentType: 'audio/wav', exposeXHeaders: true });
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', async (_req, res) => {
@@ -157,6 +182,64 @@ async function getMlHealth() {
   }
 }
 
+async function proxyRequest(req, res, pathname, options = {}) {
+  try {
+    const response = await fetch(new URL(pathname, ML_SERVER).toString(), {
+      method: req.method,
+      headers: proxyHeaders(req.headers),
+      body: req,
+      duplex: 'half'
+    });
+
+    res.status(response.status);
+    copyResponseHeaders(response, res, options);
+
+    if (!response.body) {
+      res.end();
+      return;
+    }
+
+    Readable.fromWeb(response.body).pipe(res);
+  } catch (error) {
+    console.error(`[Nativa proxy error] ${pathname}`, error);
+    if (!res.headersSent) {
+      res.status(502).json({ error: error.message || 'ML proxy failed.' });
+    } else {
+      res.end();
+    }
+  }
+}
+
+function proxyHeaders(headers) {
+  const forwarded = { ...headers };
+  delete forwarded.host;
+  delete forwarded.connection;
+  delete forwarded['content-length'];
+  return forwarded;
+}
+
+function copyResponseHeaders(response, res, options) {
+  if (options.forceContentType) {
+    res.setHeader('Content-Type', options.forceContentType);
+  } else {
+    const contentType = response.headers.get('content-type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+  }
+
+  for (const [key, value] of response.headers) {
+    if (key.startsWith('x-')) {
+      res.setHeader(key, value);
+    }
+  }
+
+  if (options.exposeXHeaders) {
+    const xHeaders = [...response.headers.keys()].filter(key => key.startsWith('x-'));
+    if (xHeaders.length) {
+      res.setHeader('Access-Control-Expose-Headers', xHeaders.join(', '));
+    }
+  }
+}
+
 async function transcribeAudio(file, sourceLang) {
   const form = new FormData();
   const blob = new Blob([file.buffer], { type: file.mimetype || 'audio/webm' });
@@ -284,7 +367,12 @@ function now() {
   return performance.now();
 }
 
-app.listen(PORT, HOST, () => {
-  console.log(`Nativa web app running at http://${HOST}:${PORT}`);
+const creds = {
+  key: fs.readFileSync('./localhost+1-key.pem'),
+  cert: fs.readFileSync('./localhost+1.pem')
+};
+
+https.createServer(creds, app).listen(PORT, HOST, () => {
+  console.log(`Nativa web app running at https://${HOST}:${PORT}`);
   console.log(`Nativa ML server expected at ${ML_SERVER_BASE_URL}`);
 });
