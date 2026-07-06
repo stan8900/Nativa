@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="app-shell">
+    <main class="app-shell app">
       <section class="workspace" aria-label="Nativa prototype">
         <header class="topbar">
           <div class="brand-block">
@@ -34,18 +34,23 @@
         </header>
 
         <section class="view active" id="voiceView" aria-label="Voice Interface">
-          <div class="visualizer-shell">
+          <div class="visualizer-shell visualizer-section">
             <div class="visualizer visualizer-container" id="voiceVisualizer" aria-label="Voice visualizer"></div>
             <p class="viz-status"><span id="pipelineState">idle</span><span id="activeSpeaker">idle</span></p>
           </div>
 
-          <section class="voice-controls" aria-label="Voice controls">
-            <button class="primary-button btn-start" id="recordButton" type="button">
-              <span class="record-dot"></span>
-              <span id="recordLabel">START</span>
-            </button>
-            <div class="vad-readout">VAD: <strong id="vadState">silent</strong></div>
-            <div class="language-controls">
+          <section class="voice-controls control-bar" aria-label="Voice controls">
+            <div class="control-left">
+              <span class="vad-label">VAD</span>
+              <strong class="vad-value silent" id="vadState">silent</strong>
+            </div>
+            <div class="control-center">
+              <button class="primary-button btn-start" id="recordButton" type="button">
+                <span class="record-dot"></span>
+                <span id="recordLabel">START</span>
+              </button>
+            </div>
+            <div class="language-controls control-right">
               <label>
                 <span>From</span>
                 <select id="sourceLang">
@@ -66,9 +71,9 @@
             </div>
           </section>
 
-          <section class="replica-history" aria-label="Replica history">
-            <div class="section-head">
-              <h2>ReplicaHistory</h2>
+          <section class="replica-history replica-section" aria-label="Replica history">
+            <div class="section-head replica-header">
+              <h2>Replica History</h2>
               <button id="clearHistory" type="button">Clear</button>
             </div>
             <ol id="historyList">

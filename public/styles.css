@@ -19,6 +19,323 @@
   --mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
+/* Voice mode layout refresh */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: #0a0a0f;
+  color: #e2e2e8;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.app,
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  border: 0;
+  background: #0a0a0f;
+}
+
+.topbar {
+  height: 64px;
+  min-height: 64px;
+  padding: 0 40px;
+  border-bottom: 1px solid #16161f;
+  align-items: center;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.connection-line {
+  gap: 14px;
+}
+
+.view.active#voiceView {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.visualizer-section,
+.visualizer-shell {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 40px;
+  padding-bottom: 20px;
+  border-bottom: 0;
+}
+
+.visualizer-container,
+.visualizer {
+  width: 100%;
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 60px;
+  box-sizing: border-box;
+}
+
+.visualizer span,
+.bar {
+  flex: 1;
+  width: auto;
+  max-width: 6px;
+  min-height: 4px;
+  border-radius: 3px 3px 0 0;
+  background: #6366f1;
+  transition: height 0.08s ease;
+}
+
+.viz-status {
+  text-align: center;
+  font-size: 12px;
+  color: #444;
+  font-family: "JetBrains Mono", monospace;
+  margin-top: 12px;
+  letter-spacing: 0.08em;
+}
+
+.control-bar,
+.voice-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 40px;
+  border-top: 1px solid #16161f;
+  border-bottom: 1px solid #16161f;
+}
+
+.control-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-center {
+  display: flex;
+  justify-content: center;
+}
+
+.control-right,
+.language-controls.control-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-start {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #6366f1;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, background 0.2s;
+  box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.1);
+}
+
+.btn-start:hover {
+  transform: scale(1.06);
+  background: #4f46e5;
+}
+
+.btn-start.recording,
+.primary-button.recording {
+  background: #ef4444;
+  box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.12);
+}
+
+.vad-label {
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.vad-value {
+  font-size: 13px;
+  font-family: "JetBrains Mono", monospace;
+  color: #555;
+}
+
+.vad-value.silent {
+  color: #555;
+}
+
+.vad-value.speaking,
+.workspace:has(.btn-start.recording) .vad-value {
+  color: #22c55e;
+}
+
+.vad-value.processing {
+  color: #f59e0b;
+}
+
+.language-controls label {
+  gap: 6px;
+}
+
+.replica-section,
+.replica-history {
+  height: 240px;
+  overflow-y: auto;
+  border-top: 1px solid #16161f;
+  padding: 0;
+}
+
+.replica-section::-webkit-scrollbar {
+  width: 4px;
+}
+
+.replica-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.replica-section::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 2px;
+}
+
+.replica-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 40px;
+  margin: 0;
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid #111118;
+}
+
+.replica-header h2 {
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.replica-history li,
+.replica-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 14px 40px;
+  border-bottom: 1px solid #111118;
+  transition: background 0.15s;
+}
+
+.replica-history li:hover,
+.replica-item:hover {
+  background: #0d0d14;
+}
+
+.replica-history li.empty,
+.replica-empty {
+  display: block;
+  text-align: center;
+  padding: 60px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.replica-history li span,
+.replica-src {
+  font-size: 14px;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.replica-history li span:last-child,
+.replica-translated {
+  font-size: 14px;
+  color: #818cf8;
+  line-height: 1.5;
+}
+
+.replica-history li strong {
+  display: none;
+}
+
+.replica-meta {
+  font-size: 11px;
+  color: #333;
+  font-family: "JetBrains Mono", monospace;
+  margin-top: 4px;
+}
+
+@media (max-width: 880px) {
+  .topbar {
+    height: auto;
+    min-height: 64px;
+    padding: 14px 18px;
+  }
+
+  .brand-block {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .visualizer-container,
+  .visualizer {
+    height: 140px;
+    padding: 0 20px;
+  }
+
+  .control-bar,
+  .voice-controls {
+    grid-template-columns: 1fr;
+    padding: 16px 18px;
+  }
+
+  .control-left,
+  .control-center,
+  .control-right,
+  .language-controls.control-right {
+    justify-content: center;
+  }
+
+  .replica-header,
+  .replica-history li,
+  .replica-item {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -618,5 +935,286 @@ tfoot td {
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Final Voice mode overrides */
+html,
+body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell.app,
+.app-shell {
+  width: 100%;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  border: 0;
+}
+
+.topbar {
+  height: 64px;
+  min-height: 64px;
+  padding: 0 40px;
+  border-bottom: 1px solid #16161f;
+  align-items: center;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+#voiceView.active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.visualizer-section,
+.visualizer-shell {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 40px 0 20px;
+  border-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.visualizer-container,
+.visualizer {
+  width: 100%;
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 60px;
+  box-sizing: border-box;
+}
+
+.visualizer span,
+.bar {
+  flex: 1;
+  width: auto;
+  max-width: 6px;
+  min-height: 4px;
+  border-radius: 3px 3px 0 0;
+  background: #6366f1;
+  transition: height 0.08s ease;
+}
+
+.viz-status {
+  text-align: center;
+  font-size: 12px;
+  color: #444;
+  font-family: "JetBrains Mono", monospace;
+  margin-top: 12px;
+  letter-spacing: 0.08em;
+}
+
+.control-bar,
+.voice-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 40px;
+  border-top: 1px solid #16161f;
+  border-bottom: 1px solid #16161f;
+}
+
+.control-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-center {
+  display: flex;
+  justify-content: center;
+}
+
+.control-right,
+.language-controls.control-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-start {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #6366f1;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, background 0.2s;
+  box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.1);
+}
+
+.btn-start:hover {
+  transform: scale(1.06);
+  background: #4f46e5;
+}
+
+.btn-start.recording,
+.primary-button.recording {
+  background: #ef4444;
+  box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.12);
+}
+
+.vad-label {
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.vad-value {
+  font-size: 13px;
+  font-family: "JetBrains Mono", monospace;
+  color: #555;
+}
+
+.workspace:has(.btn-start.recording) .vad-value {
+  color: #22c55e;
+}
+
+.replica-section,
+.replica-history {
+  height: 240px;
+  overflow-y: auto;
+  border-top: 1px solid #16161f;
+  padding: 0;
+}
+
+.replica-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 40px;
+  margin: 0;
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid #111118;
+}
+
+.replica-header h2 {
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.replica-history li,
+.replica-item {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 14px 40px;
+  border-bottom: 1px solid #111118;
+  transition: background 0.15s;
+}
+
+.replica-history li:hover,
+.replica-item:hover {
+  background: #0d0d14;
+}
+
+.replica-history li.empty,
+.replica-empty {
+  display: block;
+  text-align: center;
+  padding: 60px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.replica-history li span,
+.replica-src {
+  font-size: 14px;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.replica-history li span:last-child,
+.replica-translated {
+  font-size: 14px;
+  color: #818cf8;
+  line-height: 1.5;
+}
+
+.replica-history li strong {
+  display: none;
+}
+
+.replica-section::-webkit-scrollbar {
+  width: 4px;
+}
+
+.replica-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.replica-section::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 2px;
+}
+
+@media (max-width: 880px) {
+  .topbar {
+    height: auto;
+    padding: 14px 18px;
+  }
+
+  .brand-block {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .visualizer-container,
+  .visualizer {
+    height: 140px;
+    padding: 0 20px;
+  }
+
+  .control-bar,
+  .voice-controls {
+    grid-template-columns: 1fr;
+    padding: 16px 18px;
+  }
+
+  .control-left,
+  .control-center,
+  .control-right,
+  .language-controls.control-right {
+    justify-content: center;
+  }
+
+  .replica-header,
+  .replica-history li,
+  .replica-item {
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
