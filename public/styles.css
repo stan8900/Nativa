@@ -140,7 +140,81 @@ body {
 
 .control-center {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   justify-content: center;
+}
+
+.clone-button {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #6366f1;
+  background: transparent;
+  color: #6366f1;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: "Inter", sans-serif;
+  transition: background 0.2s, color 0.2s;
+}
+
+.clone-button:hover {
+  background: #6366f1;
+  color: white;
+}
+
+.clone-button.recording {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.text-tts-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 40px;
+  border-bottom: 1px solid #16161f;
+}
+
+.text-tts-panel textarea {
+  min-height: 48px;
+  resize: vertical;
+  border: 1px solid #222233;
+  border-radius: 8px;
+  background: #0f0f18;
+  color: #e2e2e8;
+  padding: 10px 12px;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.text-tts-panel textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.speak-button {
+  min-width: 88px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: #6366f1;
+  color: white;
+  font-size: 14px;
+  font-family: "Inter", sans-serif;
+  cursor: pointer;
+}
+
+.speak-button:hover {
+  background: #4f46e5;
+}
+
+.speak-button:disabled {
+  cursor: progress;
+  opacity: 0.65;
 }
 
 .control-right,

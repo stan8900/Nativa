@@ -49,6 +49,9 @@
                 <span class="record-dot"></span>
                 <span id="recordLabel">START</span>
               </button>
+              <button class="clone-button" id="voiceCloneButton" type="button" title="Record voice sample">
+                🎙 Clone voice
+              </button>
             </div>
             <div class="language-controls control-right">
               <label>
@@ -69,6 +72,11 @@
                 </select>
               </label>
             </div>
+          </section>
+
+          <section class="text-tts-panel" aria-label="Text to speech">
+            <textarea id="ttsTextInput" rows="2" placeholder="Type text to speak with cloned voice"></textarea>
+            <button class="speak-button" id="speakTextButton" type="button">Speak</button>
           </section>
 
           <section class="replica-history replica-section" aria-label="Replica history">

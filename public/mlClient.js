@@ -68,20 +68,12 @@ export async function ttsStream(text, voiceId = 'default') {
   return response.body;
 }
 
-export async function voiceClone(audio) {
-  const form = new FormData();
-  form.append('sample', audio, audio.type.includes('mp4') ? 'voice-sample.mp4' : 'voice-sample.webm');
-
-  const response = await fetch(`${ML_SERVER}/voice-clone`, {
+export async function voiceClone(formData) {
+  const res = await fetch(`${ML_SERVER}/voice-clone`, {
     method: 'POST',
-    body: form
+    body: formData
   });
-  const payload = await readJson(response);
-  assertOk(response, payload, '/voice-clone');
-
-  return {
-    voice_id: String(payload.voiceId || payload.voice_id || 'default')
-  };
+  return res.json();
 }
 
 async function readJson(response) {

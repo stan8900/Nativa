@@ -13,6 +13,9 @@ const elements = {
   activeSpeaker: document.querySelector('#activeSpeaker'),
   recordButton: document.querySelector('#recordButton'),
   recordLabel: document.querySelector('#recordLabel'),
+  voiceCloneButton: document.querySelector('#voiceCloneButton'),
+  ttsTextInput: document.querySelector('#ttsTextInput'),
+  speakTextButton: document.querySelector('#speakTextButton'),
   vadState: document.querySelector('#vadState'),
   sourceLang: document.querySelector('#sourceLang'),
   targetLang: document.querySelector('#targetLang'),
@@ -48,7 +51,8 @@ const state = {
   history: [],
   runs: [],
   logs: [],
-  visualizerMode: 'idle'
+  visualizerMode: 'idle',
+  voiceId: 'default'
 };
 
 const SILENCE_MS = 500;
@@ -89,6 +93,8 @@ function bindEvents() {
     if (state.recording) finishPhrase();
     else startListening();
   });
+  elements.voiceCloneButton.addEventListener('click', recordVoiceClone);
+  elements.speakTextButton.addEventListener('click', speakTypedText);
   elements.swapButton.addEventListener('click', () => {
     const source = elements.sourceLang.value;
     elements.sourceLang.value = elements.targetLang.value;
@@ -107,6 +113,81 @@ function bindEvents() {
   });
   elements.runKTests.addEventListener('click', runKTests);
   elements.exportCsv.addEventListener('click', exportCsv);
+}
+
+async function speakTypedText() {
+  const text = elements.ttsTextInput.value.trim();
+  if (!text) {
+    addLog('/tts-stream', 0, 'empty text');
+    return;
+  }
+
+  elements.speakTextButton.disabled = true;
+  elements.speakTextButton.textContent = 'Speaking...';
+  state.visualizerMode = 'bot';
+  setStatus('processing');
+
+  try {
+    const started = performance.now();
+    const stream = await ttsStream(text, state.voiceId);
+    const ttsLatency = Math.round(performance.now() - started);
+    addLog('/tts-stream', ttsLatency, `voice_id: ${state.voiceId}`);
+    await drainAudioStream(stream);
+  } catch (error) {
+    addLog('/tts-stream', 0, error.message);
+  } finally {
+    elements.speakTextButton.disabled = false;
+    elements.speakTextButton.textContent = 'Speak';
+    state.visualizerMode = 'idle';
+    elements.activeSpeaker.textContent = 'idle';
+    setStatus('idle');
+  }
+}
+
+async function recordVoiceClone() {
+  const originalLabel = elements.voiceCloneButton.textContent;
+  elements.voiceCloneButton.textContent = '⏺ Recording 10s...';
+  elements.voiceCloneButton.classList.add('recording');
+  elements.voiceCloneButton.disabled = true;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.addEventListener('dataavailable', event => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+
+    recorder.addEventListener('stop', async () => {
+      stream.getTracks().forEach(track => track.stop());
+      try {
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', blob, 'voice.webm');
+        const result = await voiceClone(formData);
+        state.voiceId = result.voice_id || result.voiceId || 'default';
+        elements.voiceCloneButton.textContent = '✓ Voice cloned';
+        addLog('/voice-clone', 0, `voice_id: ${state.voiceId}`);
+      } catch (error) {
+        elements.voiceCloneButton.textContent = 'Clone failed';
+        addLog('/voice-clone', 0, error.message);
+      } finally {
+        elements.voiceCloneButton.classList.remove('recording');
+        elements.voiceCloneButton.disabled = false;
+      }
+    });
+
+    recorder.start();
+    setTimeout(() => recorder.stop(), 10000);
+  } catch (error) {
+    stream?.getTracks().forEach(track => track.stop());
+    elements.voiceCloneButton.textContent = originalLabel;
+    elements.voiceCloneButton.classList.remove('recording');
+    elements.voiceCloneButton.disabled = false;
+    addLog('/voice-clone', 0, error.message);
+  }
 }
 
 async function checkConnection() {
@@ -249,7 +330,7 @@ async function runPipeline(audioBlob) {
     addLog('/translate', translateResult.latency_ms, 200);
 
     const ttsStarted = performance.now();
-    const stream = await ttsStream(translateResult.text);
+    const stream = await ttsStream(translateResult.text, state.voiceId);
     const ttsLatency = Math.round(performance.now() - ttsStarted);
     addLog('/tts-stream', ttsLatency, 200);
 
@@ -472,10 +553,27 @@ function addLog(endpoint, latency, status, timestamp = new Date().toLocaleTimeSt
 
 async function drainAudioStream(stream) {
   const reader = stream.getReader();
+  const chunks = [];
+
   while (true) {
-    const { done } = await reader.read();
-    if (done) return;
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
   }
+
+  const blob = new Blob(chunks, { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  elements.activeSpeaker.textContent = 'bot';
+
+  await new Promise((resolve) => {
+    audio.addEventListener('ended', () => {
+      URL.revokeObjectURL(url);
+      resolve();
+    });
+    audio.addEventListener('error', resolve);
+    audio.play();
+  });
 }
 
 function calculateStats(runs) {
