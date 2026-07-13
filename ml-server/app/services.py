@@ -264,6 +264,7 @@ class TtsService:
 
         started = time.perf_counter()
         speaker_wav = self.voice_clone.resolve_voice_path(voice_id)
+        logger.info("Synthesizing TTS with voice_id=%s speaker_wav=%s language=%s", voice_id, speaker_wav, language_code(language))
         waveform = self.model.tts(
             text=text,
             speaker_wav=str(speaker_wav),

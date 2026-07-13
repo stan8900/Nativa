@@ -169,6 +169,18 @@ body {
   color: #ef4444;
 }
 
+.voice-id-status {
+  max-width: 180px;
+  color: #8a8a99;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .text-tts-panel {
   display: grid;
   grid-template-columns: 1fr auto;

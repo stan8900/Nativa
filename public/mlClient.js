@@ -50,14 +50,23 @@ export async function translate(text, src, tgt, history = []) {
   };
 }
 
-export async function ttsStream(text, voiceId = 'default') {
+export async function ttsStream(text, voiceId, language = 'ru') {
+  if (!voiceId) {
+    throw new Error('Clone a voice before calling /tts-stream.');
+  }
+
   const response = await fetch(`${ML_SERVER}/tts-stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'audio/mpeg, audio/wav'
     },
-    body: JSON.stringify({ text, voiceId })
+    body: JSON.stringify({
+      text,
+      voice_id: voiceId,
+      voiceId,
+      language
+    })
   });
 
   if (!response.ok || !response.body) {
@@ -69,11 +78,13 @@ export async function ttsStream(text, voiceId = 'default') {
 }
 
 export async function voiceClone(formData) {
-  const res = await fetch(`${ML_SERVER}/voice-clone`, {
+  const response = await fetch(`${ML_SERVER}/voice-clone`, {
     method: 'POST',
     body: formData
   });
-  return res.json();
+  const payload = await readJson(response);
+  assertOk(response, payload, '/voice-clone');
+  return payload;
 }
 
 async function readJson(response) {

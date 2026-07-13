@@ -14,6 +14,7 @@ const elements = {
   recordButton: document.querySelector('#recordButton'),
   recordLabel: document.querySelector('#recordLabel'),
   voiceCloneButton: document.querySelector('#voiceCloneButton'),
+  voiceIdStatus: document.querySelector('#voiceIdStatus'),
   ttsTextInput: document.querySelector('#ttsTextInput'),
   speakTextButton: document.querySelector('#speakTextButton'),
   vadState: document.querySelector('#vadState'),
@@ -52,7 +53,7 @@ const state = {
   runs: [],
   logs: [],
   visualizerMode: 'idle',
-  voiceId: 'default'
+  voiceId: null
 };
 
 const SILENCE_MS = 500;
@@ -79,6 +80,7 @@ function init() {
   createVisualizerBars();
   bindEvents();
   updateLanguagePair();
+  updateVoiceIdStatus();
   setStatus('idle');
   startAmbientVisualizer();
   checkConnection();
@@ -121,6 +123,10 @@ async function speakTypedText() {
     addLog('/tts-stream', 0, 'empty text');
     return;
   }
+  if (!state.voiceId) {
+    addLog('/tts-stream', 0, 'clone voice first');
+    return;
+  }
 
   elements.speakTextButton.disabled = true;
   elements.speakTextButton.textContent = 'Speaking...';
@@ -129,7 +135,7 @@ async function speakTypedText() {
 
   try {
     const started = performance.now();
-    const stream = await ttsStream(text, state.voiceId);
+    const stream = await ttsStream(text, state.voiceId, ttsLanguageCode(elements.targetLang.value));
     const ttsLatency = Math.round(performance.now() - started);
     addLog('/tts-stream', ttsLatency, `voice_id: ${state.voiceId}`);
     await drainAudioStream(stream);
@@ -152,8 +158,15 @@ async function recordVoiceClone() {
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+    const mimeType = pickMimeType();
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     const chunks = [];
 
     recorder.addEventListener('dataavailable', event => {
@@ -167,8 +180,11 @@ async function recordVoiceClone() {
         const formData = new FormData();
         formData.append('audio', blob, 'voice.webm');
         const result = await voiceClone(formData);
-        state.voiceId = result.voice_id || result.voiceId || 'default';
+        const voiceId = result.voice_id || result.voiceId;
+        if (!voiceId) throw new Error('Voice clone did not return voice_id.');
+        state.voiceId = voiceId;
         elements.voiceCloneButton.textContent = '✓ Voice cloned';
+        updateVoiceIdStatus();
         addLog('/voice-clone', 0, `voice_id: ${state.voiceId}`);
       } catch (error) {
         elements.voiceCloneButton.textContent = 'Clone failed';
@@ -322,6 +338,7 @@ async function runPipeline(audioBlob) {
 
   try {
     if (!state.mlConnected) throw new Error('ML server unavailable');
+    if (!state.voiceId) throw new Error('Clone a voice before starting pipeline');
 
     const sttResult = await stt(audioBlob, src);
     addLog('/stt', sttResult.latency_ms, 200);
@@ -330,7 +347,7 @@ async function runPipeline(audioBlob) {
     addLog('/translate', translateResult.latency_ms, 200);
 
     const ttsStarted = performance.now();
-    const stream = await ttsStream(translateResult.text, state.voiceId);
+    const stream = await ttsStream(translateResult.text, state.voiceId, ttsLanguageCode(tgt));
     const ttsLatency = Math.round(performance.now() - ttsStarted);
     addLog('/tts-stream', ttsLatency, 200);
 
@@ -480,6 +497,11 @@ function setConnection(type, label) {
 
 function updateLanguagePair() {
   elements.languagePair.textContent = `${langCode(elements.sourceLang.value)} -> ${langCode(elements.targetLang.value)}`;
+}
+
+function updateVoiceIdStatus() {
+  elements.voiceIdStatus.textContent = state.voiceId ? `voice: ${state.voiceId}` : 'No cloned voice';
+  elements.voiceIdStatus.title = state.voiceId || 'No cloned voice';
 }
 
 function renderMetrics(latency) {
@@ -648,6 +670,10 @@ function langCode(language) {
   if (language === 'Russian') return 'RU';
   if (language === 'Uzbek') return 'UZ';
   return 'EN';
+}
+
+function ttsLanguageCode(language) {
+  return language === 'Russian' ? 'ru' : 'en';
 }
 
 function formatMs(value) {

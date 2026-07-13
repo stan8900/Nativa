@@ -85,7 +85,7 @@ async def tts_stream(payload: TtsRequest):
     return StreamingResponse(
         iter_bytes(audio),
         media_type="audio/wav",
-        headers={"X-Latency-TTS": str(latency_ms)},
+        headers={"X-Latency-TTS": str(latency_ms), "X-Voice-ID": voice_id},
     )
 
 
