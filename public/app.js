@@ -2,6 +2,17 @@ import { health, stt, translate, ttsStream, voiceClone } from './mlClient.js';
 import { runMockPipeline } from './useMockPipeline.js';
 
 const elements = {
+  dashboardView: document.querySelector('#dashboardView'),
+  projectView: document.querySelector('#projectView'),
+  dashboardHomeButton: document.querySelector('#dashboardHomeButton'),
+  recentNavButton: document.querySelector('#recentNavButton'),
+  filesNavButton: document.querySelector('#filesNavButton'),
+  newProjectButton: document.querySelector('#newProjectButton'),
+  projectCards: document.querySelectorAll('.project-card'),
+  recentSessionsList: document.querySelector('#recentSessionsList'),
+  sidebarRecentSessions: document.querySelector('#sidebarRecentSessions'),
+  backButton: document.querySelector('#backButton'),
+  sessionTitle: document.querySelector('#sessionTitle'),
   voiceModeButton: document.querySelector('#voiceModeButton'),
   debugModeButton: document.querySelector('#debugModeButton'),
   voiceView: document.querySelector('#voiceView'),
@@ -53,9 +64,14 @@ const state = {
   runs: [],
   logs: [],
   visualizerMode: 'idle',
-  voiceId: null
+  voiceId: null,
+  sessions: [],
+  currentSessionId: null,
+  sessionStartedAt: null,
+  debugOpen: false
 };
 
+const SESSIONS_KEY = 'nativa.sessions';
 const SILENCE_MS = 500;
 const MIN_RECORDING_MS = 450;
 const SPEECH_THRESHOLD = 0.003;
@@ -77,6 +93,7 @@ const K_TESTS = [
 init();
 
 function init() {
+  state.sessions = loadSessions();
   createVisualizerBars();
   bindEvents();
   updateLanguagePair();
@@ -86,11 +103,23 @@ function init() {
   checkConnection();
   renderHistory();
   renderLatencyTable();
+  renderRecentSessions();
 }
 
 function bindEvents() {
-  elements.voiceModeButton.addEventListener('click', () => setMode('voice'));
-  elements.debugModeButton.addEventListener('click', () => setMode('debug'));
+  elements.dashboardHomeButton.addEventListener('click', showDashboard);
+  elements.recentNavButton.addEventListener('click', showDashboard);
+  elements.filesNavButton.addEventListener('click', showDashboard);
+  elements.newProjectButton.addEventListener('click', () => startProject());
+  elements.backButton.addEventListener('click', showDashboard);
+  elements.projectCards.forEach(card => {
+    card.addEventListener('click', () => startProject());
+  });
+  elements.recentSessionsList.addEventListener('click', handleSessionListClick);
+  elements.sidebarRecentSessions.addEventListener('click', handleSessionListClick);
+  elements.sessionTitle.addEventListener('input', updateCurrentSessionTitle);
+  elements.voiceModeButton?.addEventListener('click', () => setMode('voice'));
+  elements.debugModeButton.addEventListener('click', () => setMode(state.debugOpen ? 'voice' : 'debug'));
   elements.recordButton.addEventListener('click', () => {
     if (state.recording) finishPhrase();
     else startListening();
@@ -102,11 +131,19 @@ function bindEvents() {
     elements.sourceLang.value = elements.targetLang.value;
     elements.targetLang.value = source;
     updateLanguagePair();
+    updateCurrentSessionLanguages();
   });
-  elements.sourceLang.addEventListener('change', updateLanguagePair);
-  elements.targetLang.addEventListener('change', updateLanguagePair);
+  elements.sourceLang.addEventListener('change', () => {
+    updateLanguagePair();
+    updateCurrentSessionLanguages();
+  });
+  elements.targetLang.addEventListener('change', () => {
+    updateLanguagePair();
+    updateCurrentSessionLanguages();
+  });
   elements.clearHistory.addEventListener('click', () => {
     state.history = [];
+    updateCurrentSessionReplicas();
     renderHistory();
   });
   elements.clearLog.addEventListener('click', () => {
@@ -115,6 +152,161 @@ function bindEvents() {
   });
   elements.runKTests.addEventListener('click', runKTests);
   elements.exportCsv.addEventListener('click', exportCsv);
+}
+
+function startProject(session = null) {
+  const activeSession = session || createSession();
+  state.currentSessionId = activeSession.id;
+  state.sessionStartedAt = performance.now();
+  state.history = Array.isArray(activeSession.replicas) ? [...activeSession.replicas] : [];
+  state.runs = state.history.map((run, index) => ({ id: index + 1, status: '✓', ...run }));
+  elements.sessionTitle.value = activeSession.title || 'Untitled session';
+  elements.sourceLang.value = languageFromCode(activeSession.srcLang || 'RU');
+  elements.targetLang.value = languageFromCode(activeSession.tgtLang || 'EN');
+  updateLanguagePair();
+  renderHistory();
+  renderLatencyTable();
+  showProject();
+}
+
+function createSession() {
+  const session = {
+    id: createId(),
+    title: 'Untitled session',
+    date: new Date().toISOString(),
+    srcLang: langCode(elements.sourceLang.value),
+    tgtLang: langCode(elements.targetLang.value),
+    replicas: [],
+    duration: 0
+  };
+  state.sessions = [session, ...state.sessions.filter(item => item.id !== session.id)];
+  saveSessions();
+  renderRecentSessions();
+  return session;
+}
+
+function showProject() {
+  elements.dashboardView.classList.remove('active');
+  elements.projectView.classList.add('active');
+  setNavActive(false);
+}
+
+function showDashboard() {
+  saveCurrentSession();
+  elements.projectView.classList.remove('active');
+  elements.dashboardView.classList.add('active');
+  setMode('voice');
+  setNavActive(true);
+  renderRecentSessions();
+}
+
+function setNavActive(homeActive) {
+  elements.dashboardHomeButton.classList.toggle('active', homeActive);
+  elements.recentNavButton.classList.remove('active');
+  elements.filesNavButton.classList.remove('active');
+}
+
+function handleSessionListClick(event) {
+  const button = event.target.closest('[data-session-id]');
+  if (!button) return;
+  const session = state.sessions.find(item => item.id === button.dataset.sessionId);
+  if (session) startProject(session);
+}
+
+function loadSessions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSessions() {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(state.sessions.slice(0, 20)));
+}
+
+function saveCurrentSession() {
+  const session = getCurrentSession();
+  if (!session) return;
+  if (state.sessionStartedAt) {
+    session.duration += Math.round((performance.now() - state.sessionStartedAt) / 1000);
+    state.sessionStartedAt = performance.now();
+  }
+  session.title = elements.sessionTitle.value.trim() || 'Untitled session';
+  session.srcLang = langCode(elements.sourceLang.value);
+  session.tgtLang = langCode(elements.targetLang.value);
+  session.replicas = [...state.history];
+  saveSessions();
+}
+
+function getCurrentSession() {
+  return state.sessions.find(session => session.id === state.currentSessionId);
+}
+
+function updateCurrentSessionTitle() {
+  const session = getCurrentSession();
+  if (!session) return;
+  session.title = elements.sessionTitle.value.trim() || 'Untitled session';
+  saveSessions();
+  renderRecentSessions();
+}
+
+function updateCurrentSessionLanguages() {
+  const session = getCurrentSession();
+  if (!session) return;
+  session.srcLang = langCode(elements.sourceLang.value);
+  session.tgtLang = langCode(elements.targetLang.value);
+  saveSessions();
+  renderRecentSessions();
+}
+
+function updateCurrentSessionReplicas() {
+  const session = getCurrentSession();
+  if (!session) return;
+  session.replicas = [...state.history];
+  saveSessions();
+  renderRecentSessions();
+}
+
+function renderRecentSessions() {
+  const recent = [...state.sessions]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+  renderRecentList(elements.recentSessionsList, recent, 'dashboard');
+  renderRecentList(elements.sidebarRecentSessions, recent, 'sidebar');
+}
+
+function renderRecentList(container, sessions, variant) {
+  container.innerHTML = '';
+  if (sessions.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = variant === 'dashboard' ? 'No sessions yet. Start your first project.' : 'No sessions yet.';
+    container.append(empty);
+    return;
+  }
+
+  for (const session of sessions) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.sessionId = session.id;
+    if (variant === 'sidebar') {
+      button.className = 'sidebar-session';
+      button.innerHTML = `<strong>${escapeHtml(session.title)}</strong><span>${escapeHtml(session.srcLang)} → ${escapeHtml(session.tgtLang)}</span>`;
+    } else {
+      button.className = 'recent-session-item';
+      button.innerHTML = `
+        <span class="session-icon">🎙</span>
+        <div>
+          <strong>${escapeHtml(session.title)}</strong>
+          <span>${formatDate(session.date)} · ${escapeHtml(session.srcLang)} → ${escapeHtml(session.tgtLang)}</span>
+        </div>
+        <span>${formatDuration(session.duration || 0)}</span>
+      `;
+    }
+    container.append(button);
+  }
 }
 
 async function speakTypedText() {
@@ -221,10 +413,11 @@ async function checkConnection() {
 
 function setMode(mode) {
   state.mode = mode;
-  elements.voiceModeButton.classList.toggle('active', mode === 'voice');
-  elements.debugModeButton.classList.toggle('active', mode === 'debug');
-  elements.voiceView.classList.toggle('active', mode === 'voice');
-  elements.debugView.classList.toggle('active', mode === 'debug');
+  state.debugOpen = mode === 'debug';
+  elements.voiceModeButton?.classList.toggle('active', mode === 'voice');
+  elements.debugModeButton.classList.toggle('active', state.debugOpen);
+  elements.voiceView.classList.toggle('is-hidden', state.debugOpen);
+  elements.debugView.classList.toggle('active', state.debugOpen);
 }
 
 async function startListening() {
@@ -435,6 +628,7 @@ function commitRun(run) {
   state.runs.push(normalized);
   state.history.push(normalized);
   state.history = state.history.slice(-5);
+  updateCurrentSessionReplicas();
   renderMetrics(run.latency);
   renderHistory();
   renderLatencyTable();
@@ -672,8 +866,34 @@ function langCode(language) {
   return 'EN';
 }
 
+function languageFromCode(code) {
+  if (code === 'RU') return 'Russian';
+  if (code === 'UZ') return 'Uzbek';
+  return 'English';
+}
+
 function ttsLanguageCode(language) {
   return language === 'Russian' ? 'ru' : 'en';
+}
+
+function createId() {
+  return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatDate(value) {
+  return new Date(value).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const minutes = Math.floor(total / 60);
+  const remainder = total % 60;
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
 }
 
 function formatMs(value) {

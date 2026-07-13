@@ -6,72 +6,122 @@
     <title>Nativa</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="app-shell app">
-      <section class="workspace" aria-label="Nativa prototype">
-        <header class="topbar">
-          <div class="brand-block">
-            <div class="brand-row">
-              <div class="logo-mark">N</div>
-              <h1>NATIVA</h1>
-            </div>
-            <div class="connection-line">
-              <span id="languagePair">RU -> EN</span>
-              <span class="status-badge" id="connectionBadge">
-                <span></span>
-                <b>Checking</b>
-              </span>
-            </div>
+      <aside class="sidebar" aria-label="Nativa navigation">
+        <div class="sidebar-top">
+          <div class="brand-row">
+            <div class="logo-mark">N</div>
+            <h1>NATIVA</h1>
           </div>
+        </div>
 
-          <nav class="mode-switch" aria-label="Interface mode">
-            <button class="active" id="voiceModeButton" type="button">Voice</button>
-            <button id="debugModeButton" type="button">Debug</button>
-          </nav>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <button class="nav-item active" id="dashboardHomeButton" type="button"><span>🏠</span> Home</button>
+          <button class="nav-item" id="recentNavButton" type="button"><span>🕐</span> Recent</button>
+          <button class="nav-item" id="filesNavButton" type="button"><span>📁</span> My files</button>
+        </nav>
+
+        <section class="sidebar-recents" aria-label="Recent sessions">
+          <h2>Recent</h2>
+          <div id="sidebarRecentSessions"></div>
+        </section>
+
+        <div class="user-block">
+          <div class="avatar">G</div>
+          <div>
+            <strong>Guest</strong>
+            <span class="status-badge" id="connectionBadge">
+              <span></span>
+              <b>Checking</b>
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      <section class="screen dashboard-screen active" id="dashboardView" aria-label="Dashboard">
+        <header class="dashboard-header">
+          <button class="new-project-button" id="newProjectButton" type="button">+ New Project</button>
         </header>
 
-        <section class="view active" id="voiceView" aria-label="Voice Interface">
-          <div class="visualizer-shell visualizer-section">
-            <div class="visualizer visualizer-container" id="voiceVisualizer" aria-label="Voice visualizer"></div>
-            <p class="viz-status"><span id="pipelineState">idle</span><span id="activeSpeaker">idle</span></p>
+        <section class="dashboard-hero" aria-label="Project starters">
+          <h2>What do you want to do?</h2>
+          <div class="project-card-grid">
+            <button class="project-card" type="button" data-project-kind="voice">
+              <span class="card-icon">🎙</span>
+              <strong>Voice your speech</strong>
+              <p>Speak and hear yourself translated in real time</p>
+            </button>
+            <button class="project-card" type="button" data-project-kind="conversation">
+              <span class="card-icon">↔</span>
+              <strong>Have a conversation</strong>
+              <p>Talk with someone who speaks a different language</p>
+            </button>
+            <button class="project-card" type="button" data-project-kind="listen">
+              <span class="card-icon">👂</span>
+              <strong>Hear what others say</strong>
+              <p>Listen and read translations as people speak around you</p>
+            </button>
           </div>
+        </section>
+
+        <section class="recent-sessions-panel" aria-label="Recent sessions">
+          <div class="section-head">
+            <h2>Recent sessions</h2>
+          </div>
+          <div class="recent-session-list" id="recentSessionsList"></div>
+        </section>
+      </section>
+
+      <section class="screen project-screen" id="projectView" aria-label="Project View">
+        <header class="project-topbar">
+          <button class="back-button" id="backButton" type="button">← Back</button>
+          <input class="session-title" id="sessionTitle" value="Untitled session" aria-label="Session title">
+          <div class="project-actions">
+            <span class="language-pair" id="languagePair">RU → EN</span>
+            <label>
+              <span>From</span>
+              <select id="sourceLang">
+                <option value="Russian" selected>RU</option>
+                <option value="English">EN</option>
+                <option value="Uzbek">UZ</option>
+              </select>
+            </label>
+            <button class="icon-button" id="swapButton" type="button" title="Swap languages" aria-label="Swap languages">↔</button>
+            <label>
+              <span>To</span>
+              <select id="targetLang">
+                <option value="English" selected>EN</option>
+                <option value="Russian">RU</option>
+                <option value="Uzbek">UZ</option>
+              </select>
+            </label>
+            <button class="debug-toggle" id="debugModeButton" type="button">Debug</button>
+          </div>
+        </header>
+
+        <section class="project-main active" id="voiceView" aria-label="Voice Interface">
+          <section class="visualizer-shell visualizer-section" aria-label="Voice visualizer">
+            <div class="visualizer visualizer-container" id="voiceVisualizer"></div>
+            <p class="viz-status"><span id="pipelineState">idle</span><span id="activeSpeaker">idle</span></p>
+          </section>
 
           <section class="voice-controls control-bar" aria-label="Voice controls">
             <div class="control-left">
-              <span class="vad-label">VAD</span>
+              <span class="vad-label">VAD:</span>
               <strong class="vad-value silent" id="vadState">silent</strong>
             </div>
             <div class="control-center">
               <button class="primary-button btn-start" id="recordButton" type="button">
-                <span class="record-dot"></span>
                 <span id="recordLabel">START</span>
               </button>
-              <button class="clone-button" id="voiceCloneButton" type="button" title="Record voice sample">
-                🎙 Clone voice
-              </button>
-              <span class="voice-id-status" id="voiceIdStatus">No cloned voice</span>
             </div>
-            <div class="language-controls control-right">
-              <label>
-                <span>From</span>
-                <select id="sourceLang">
-                  <option value="Russian" selected>RU</option>
-                  <option value="English">EN</option>
-                  <option value="Uzbek">UZ</option>
-                </select>
-              </label>
-              <button class="icon-button" id="swapButton" type="button" title="Swap languages" aria-label="Swap languages">↔</button>
-              <label>
-                <span>To</span>
-                <select id="targetLang">
-                  <option value="English" selected>EN</option>
-                  <option value="Russian">RU</option>
-                  <option value="Uzbek">UZ</option>
-                </select>
-              </label>
+            <div class="control-right">
+              <button class="clone-button" id="voiceCloneButton" type="button" title="Record voice sample">🎙 Clone voice</button>
+              <span class="voice-id-status" id="voiceIdStatus">No cloned voice</span>
             </div>
           </section>
 
@@ -91,7 +141,7 @@
           </section>
         </section>
 
-        <section class="view debug-grid" id="debugView" aria-label="Debug Console">
+        <section class="debug-panel" id="debugView" aria-label="Debug Console">
           <section class="latency-panel" aria-label="Latency table">
             <div class="section-head">
               <h2>LatencyTable</h2>
