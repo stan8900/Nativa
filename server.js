@@ -22,7 +22,7 @@ const ML_SERVER_BASE_URL = process.env.ML_SERVER_BASE_URL || 'http://127.0.0.1:8
 const ML_SERVER = ML_SERVER_BASE_URL;
 let activeVoiceId = process.env.DEFAULT_VOICE_ID || 'default';
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'docs')));
 
 app.post('/api/stt', async (req, res) => {
   await proxyRequest(req, res, '/stt');
