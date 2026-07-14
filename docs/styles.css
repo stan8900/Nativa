@@ -32,6 +32,16 @@ body {
   overflow: hidden;
 }
 
+body.auth-pending .app-shell,
+body.auth-required .app-shell {
+  display: none;
+}
+
+body.authenticated .auth-screen,
+body.auth-pending .auth-screen {
+  display: none;
+}
+
 button,
 input,
 select,
@@ -41,6 +51,136 @@ textarea {
 
 button {
   color: inherit;
+}
+
+.auth-screen {
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-panel {
+  width: min(100%, 410px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 24px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.auth-brand p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 4px;
+}
+
+.auth-tabs button {
+  height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.auth-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auth-form input {
+  height: 44px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.auth-form .auth-name-field {
+  display: none;
+}
+
+.auth-form .auth-name-field.active {
+  display: grid;
+}
+
+.auth-submit {
+  height: 44px;
+  margin-top: 4px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-submit:hover {
+  background: var(--accent-hover);
+}
+
+.auth-submit:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.auth-message {
+  min-height: 18px;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.auth-message.ok {
+  color: var(--ok);
 }
 
 .app-shell {
@@ -169,6 +309,10 @@ button {
   border-top: 1px solid var(--border);
 }
 
+.user-block > div:not(.avatar) {
+  min-width: 0;
+}
+
 .avatar {
   display: grid;
   place-items: center;
@@ -199,6 +343,24 @@ button {
   height: 7px;
   border-radius: 50%;
   background: var(--muted);
+}
+
+.sign-out-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sign-out-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .status-badge.connected > span {
@@ -823,6 +985,10 @@ td.fail {
 
   .user-block > div:not(.avatar) {
     display: none;
+  }
+
+  .sign-out-button {
+    margin-left: 0;
   }
 
   .dashboard-screen {

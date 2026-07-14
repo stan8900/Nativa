@@ -2,6 +2,16 @@ import { health, stt, translate, ttsStream, voiceClone } from './mlClient.js';
 import { runMockPipeline } from './useMockPipeline.js';
 
 const elements = {
+  authView: document.querySelector('#authView'),
+  authForm: document.querySelector('#authForm'),
+  loginTab: document.querySelector('#loginTab'),
+  registerTab: document.querySelector('#registerTab'),
+  authNameField: document.querySelector('#authNameField'),
+  authName: document.querySelector('#authName'),
+  authEmail: document.querySelector('#authEmail'),
+  authPassword: document.querySelector('#authPassword'),
+  authSubmit: document.querySelector('#authSubmit'),
+  authMessage: document.querySelector('#authMessage'),
   dashboardView: document.querySelector('#dashboardView'),
   projectView: document.querySelector('#projectView'),
   dashboardHomeButton: document.querySelector('#dashboardHomeButton'),
@@ -18,6 +28,9 @@ const elements = {
   voiceView: document.querySelector('#voiceView'),
   debugView: document.querySelector('#debugView'),
   connectionBadge: document.querySelector('#connectionBadge'),
+  userAvatar: document.querySelector('#userAvatar'),
+  userName: document.querySelector('#userName'),
+  signOutButton: document.querySelector('#signOutButton'),
   languagePair: document.querySelector('#languagePair'),
   voiceVisualizer: document.querySelector('#voiceVisualizer'),
   pipelineState: document.querySelector('#pipelineState'),
@@ -47,6 +60,8 @@ const elements = {
 };
 
 const state = {
+  authMode: 'login',
+  currentUser: null,
   mode: 'voice',
   status: 'idle',
   mlConnected: false,
@@ -72,6 +87,7 @@ const state = {
 };
 
 const SESSIONS_KEY = 'nativa.sessions';
+let saveSessionsTimer = null;
 const SILENCE_MS = 500;
 const MIN_RECORDING_MS = 450;
 const SPEECH_THRESHOLD = 0.003;
@@ -92,21 +108,30 @@ const K_TESTS = [
 
 init();
 
-function init() {
-  state.sessions = loadSessions();
+async function init() {
   createVisualizerBars();
   bindEvents();
   updateLanguagePair();
   updateVoiceIdStatus();
   setStatus('idle');
   startAmbientVisualizer();
-  checkConnection();
   renderHistory();
   renderLatencyTable();
-  renderRecentSessions();
+  setAuthMode('login');
+
+  try {
+    const { user } = await apiJson('/api/me');
+    await enterApp(user);
+  } catch {
+    showAuth();
+  }
 }
 
 function bindEvents() {
+  elements.loginTab.addEventListener('click', () => setAuthMode('login'));
+  elements.registerTab.addEventListener('click', () => setAuthMode('register'));
+  elements.authForm.addEventListener('submit', handleAuthSubmit);
+  elements.signOutButton.addEventListener('click', signOut);
   elements.dashboardHomeButton.addEventListener('click', showDashboard);
   elements.recentNavButton.addEventListener('click', showDashboard);
   elements.filesNavButton.addEventListener('click', showDashboard);
@@ -152,6 +177,82 @@ function bindEvents() {
   });
   elements.runKTests.addEventListener('click', runKTests);
   elements.exportCsv.addEventListener('click', exportCsv);
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const isRegister = mode === 'register';
+  elements.loginTab.classList.toggle('active', !isRegister);
+  elements.registerTab.classList.toggle('active', isRegister);
+  elements.authNameField.classList.toggle('active', isRegister);
+  elements.authName.required = isRegister;
+  elements.authPassword.autocomplete = isRegister ? 'new-password' : 'current-password';
+  elements.authSubmit.textContent = isRegister ? 'Create account' : 'Login';
+  setAuthMessage('');
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  setAuthMessage('');
+  elements.authSubmit.disabled = true;
+
+  try {
+    const endpoint = state.authMode === 'register' ? '/api/register' : '/api/login';
+    const payload = {
+      email: elements.authEmail.value,
+      password: elements.authPassword.value
+    };
+    if (state.authMode === 'register') payload.name = elements.authName.value;
+
+    const { user } = await apiJson(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    elements.authForm.reset();
+    await enterApp(user);
+  } catch (error) {
+    setAuthMessage(error.message || 'Authentication failed.');
+  } finally {
+    elements.authSubmit.disabled = false;
+  }
+}
+
+async function enterApp(user) {
+  state.currentUser = user;
+  updateUserProfile();
+  document.body.classList.remove('auth-pending', 'auth-required');
+  document.body.classList.add('authenticated');
+  state.sessions = await loadSessions();
+  renderRecentSessions();
+  checkConnection();
+}
+
+function showAuth() {
+  state.currentUser = null;
+  document.body.classList.remove('auth-pending', 'authenticated');
+  document.body.classList.add('auth-required');
+}
+
+async function signOut() {
+  saveCurrentSession();
+  await saveSessionsToDatabase();
+  await apiJson('/api/logout', { method: 'POST' }).catch(() => ({}));
+  state.sessions = [];
+  state.currentSessionId = null;
+  renderRecentSessions();
+  showDashboard();
+  showAuth();
+}
+
+function updateUserProfile() {
+  const name = state.currentUser?.name || 'User';
+  elements.userName.textContent = name;
+  elements.userAvatar.textContent = name.trim().charAt(0).toUpperCase() || 'U';
+}
+
+function setAuthMessage(message, type = 'error') {
+  elements.authMessage.textContent = message;
+  elements.authMessage.classList.toggle('ok', type === 'ok');
 }
 
 function startProject(session = null) {
@@ -213,9 +314,20 @@ function handleSessionListClick(event) {
   if (session) startProject(session);
 }
 
-function loadSessions() {
+async function loadSessions() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    const result = await apiJson('/api/user-sessions');
+    const sessions = Array.isArray(result.sessions) ? result.sessions : [];
+    localStorage.setItem(getSessionsKey(), JSON.stringify(sessions));
+    return sessions;
+  } catch {
+    return loadLocalSessions();
+  }
+}
+
+function loadLocalSessions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(getSessionsKey()) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -223,7 +335,32 @@ function loadSessions() {
 }
 
 function saveSessions() {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(state.sessions.slice(0, 20)));
+  localStorage.setItem(getSessionsKey(), JSON.stringify(state.sessions.slice(0, 20)));
+  scheduleSessionDatabaseSave();
+}
+
+function scheduleSessionDatabaseSave() {
+  window.clearTimeout(saveSessionsTimer);
+  saveSessionsTimer = window.setTimeout(saveSessionsToDatabase, 350);
+}
+
+async function saveSessionsToDatabase() {
+  if (!state.currentUser) return;
+  window.clearTimeout(saveSessionsTimer);
+  saveSessionsTimer = null;
+
+  try {
+    await apiJson('/api/user-sessions', {
+      method: 'PUT',
+      body: JSON.stringify({ sessions: state.sessions.slice(0, 20) })
+    });
+  } catch (error) {
+    addLog('/user-sessions', 0, error.message);
+  }
+}
+
+function getSessionsKey() {
+  return state.currentUser?.id ? `${SESSIONS_KEY}.${state.currentUser.id}` : SESSIONS_KEY;
 }
 
 function saveCurrentSession() {
@@ -899,6 +1036,24 @@ function formatDuration(seconds) {
 function formatMs(value) {
   if (!Number.isFinite(Number(value))) return '-';
   return `${Math.round(Number(value))}ms`;
+}
+
+async function apiJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    ...options
+  });
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    throw new Error(payload.error || response.statusText);
+  }
+
+  return payload;
 }
 
 function escapeHtml(value) {

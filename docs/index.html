@@ -9,7 +9,41 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css">
   </head>
-  <body>
+  <body class="auth-pending">
+    <section class="auth-screen" id="authView" aria-label="Authentication">
+      <div class="auth-panel">
+        <div class="auth-brand">
+          <div class="logo-mark">N</div>
+          <div>
+            <h1>NATIVA</h1>
+            <p>Secure workspace for your translation sessions</p>
+          </div>
+        </div>
+
+        <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
+          <button class="active" id="loginTab" type="button">Login</button>
+          <button id="registerTab" type="button">Register</button>
+        </div>
+
+        <form class="auth-form" id="authForm">
+          <label class="auth-name-field" id="authNameField">
+            <span>Name</span>
+            <input id="authName" name="name" autocomplete="name" placeholder="Your name">
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimum 6 characters" required>
+          </label>
+          <button class="auth-submit" id="authSubmit" type="submit">Login</button>
+          <p class="auth-message" id="authMessage" role="status"></p>
+        </form>
+      </div>
+    </section>
+
     <main class="app-shell app">
       <aside class="sidebar" aria-label="Nativa navigation">
         <div class="sidebar-top">
@@ -31,14 +65,15 @@
         </section>
 
         <div class="user-block">
-          <div class="avatar">G</div>
+          <div class="avatar" id="userAvatar">G</div>
           <div>
-            <strong>Guest</strong>
+            <strong id="userName">Guest</strong>
             <span class="status-badge" id="connectionBadge">
               <span></span>
               <b>Checking</b>
             </span>
           </div>
+          <button class="sign-out-button" id="signOutButton" type="button" title="Sign out" aria-label="Sign out">↪</button>
         </div>
       </aside>
 

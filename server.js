@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
 import https from 'node:https';
@@ -20,6 +21,9 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 const ML_SERVER_BASE_URL = process.env.ML_SERVER_BASE_URL || 'http://127.0.0.1:8000';
 const ML_SERVER = ML_SERVER_BASE_URL;
+const DB_DIR = path.join(__dirname, 'data');
+const DB_PATH = path.join(DB_DIR, 'nativa-db.json');
+const SESSION_COOKIE = 'nativa_session';
 let activeVoiceId = process.env.DEFAULT_VOICE_ID || 'default';
 
 app.use(express.static(path.join(__dirname, 'docs')));
@@ -45,6 +49,89 @@ app.post('/api/pipeline', async (req, res) => {
 });
 
 app.use(express.json({ limit: '1mb' }));
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const { name, email, password } = normalizeCredentials(req.body);
+    const db = readDb();
+
+    if (db.users.some(user => user.email === email)) {
+      return res.status(409).json({ error: 'Email is already registered.' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = {
+      id: crypto.randomUUID(),
+      name,
+      email,
+      passwordHash,
+      sessions: [],
+      createdAt: new Date().toISOString()
+    };
+
+    db.users.push(user);
+    const session = createAuthSession(db, user.id);
+    writeDb(db);
+    setSessionCookie(res, session.id);
+    res.status(201).json({ user: publicUser(user) });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    const db = readDb();
+    const user = db.users.find(item => item.email === email);
+
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const session = createAuthSession(db, user.id);
+    writeDb(db);
+    setSessionCookie(res, session.id);
+    res.json({ user: publicUser(user) });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Login failed.' });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  const sessionId = getCookie(req, SESSION_COOKIE);
+  if (sessionId) {
+    const db = readDb();
+    db.sessions = db.sessions.filter(session => session.id !== sessionId);
+    writeDb(db);
+  }
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/me', (req, res) => {
+  const auth = getAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Not authenticated.' });
+  res.json({ user: publicUser(auth.user) });
+});
+
+app.get('/api/user-sessions', (req, res) => {
+  const auth = getAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Not authenticated.' });
+  res.json({ sessions: Array.isArray(auth.user.sessions) ? auth.user.sessions : [] });
+});
+
+app.put('/api/user-sessions', (req, res) => {
+  const auth = getAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const sessions = Array.isArray(req.body?.sessions) ? req.body.sessions.slice(0, 20) : [];
+  const user = auth.db.users.find(item => item.id === auth.user.id);
+  user.sessions = sanitizeSessions(sessions);
+  writeDb(auth.db);
+  res.json({ ok: true, sessions: user.sessions });
+});
 
 app.get('/api/health', async (_req, res) => {
   const mlHealth = await getMlHealth();
@@ -365,6 +452,147 @@ function parseHistory(value) {
 
 function now() {
   return performance.now();
+}
+
+function normalizeCredentials(body = {}) {
+  const name = String(body.name || '').trim();
+  const email = normalizeEmail(body.email);
+  const password = String(body.password || '');
+
+  if (name.length < 2) throw statusError('Name must be at least 2 characters.', 400);
+  if (!email.includes('@') || email.length < 5) throw statusError('Enter a valid email.', 400);
+  if (password.length < 6) throw statusError('Password must be at least 6 characters.', 400);
+
+  return { name, email, password };
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = await scrypt(password, salt);
+  return `scrypt:${salt}:${derived}`;
+}
+
+async function verifyPassword(password, storedHash = '') {
+  const [method, salt, expected] = storedHash.split(':');
+  if (method !== 'scrypt' || !salt || !expected) return false;
+
+  const actual = await scrypt(password, salt);
+  if (actual.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+}
+
+function scrypt(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey.toString('hex'));
+    });
+  });
+}
+
+function createAuthSession(db, userId) {
+  const session = {
+    id: crypto.randomBytes(32).toString('hex'),
+    userId,
+    createdAt: new Date().toISOString()
+  };
+  db.sessions = db.sessions.filter(item => item.userId !== userId).slice(-20);
+  db.sessions.push(session);
+  return session;
+}
+
+function getAuth(req) {
+  const sessionId = getCookie(req, SESSION_COOKIE);
+  if (!sessionId) return null;
+
+  const db = readDb();
+  const session = db.sessions.find(item => item.id === sessionId);
+  if (!session) return null;
+
+  const user = db.users.find(item => item.id === session.userId);
+  if (!user) return null;
+
+  return { db, session, user };
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    createdAt: user.createdAt
+  };
+}
+
+function sanitizeSessions(sessions) {
+  return sessions.map(session => ({
+    id: String(session.id || crypto.randomUUID()),
+    title: String(session.title || 'Untitled session').slice(0, 120),
+    date: String(session.date || new Date().toISOString()),
+    srcLang: String(session.srcLang || 'RU').slice(0, 8),
+    tgtLang: String(session.tgtLang || 'EN').slice(0, 8),
+    duration: Math.max(0, Number(session.duration) || 0),
+    replicas: Array.isArray(session.replicas) ? session.replicas.slice(-5) : []
+  }));
+}
+
+function readDb() {
+  ensureDb();
+  try {
+    const parsed = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+    return {
+      users: Array.isArray(parsed.users) ? parsed.users : [],
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
+    };
+  } catch {
+    return { users: [], sessions: [] };
+  }
+}
+
+function writeDb(db) {
+  ensureDb();
+  fs.writeFileSync(DB_PATH, `${JSON.stringify(db, null, 2)}\n`);
+}
+
+function ensureDb() {
+  if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, `${JSON.stringify({ users: [], sessions: [] }, null, 2)}\n`);
+}
+
+function setSessionCookie(res, sessionId) {
+  res.cookie(SESSION_COOKIE, sessionId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    maxAge: 1000 * 60 * 60 * 24 * 30
+  });
+}
+
+function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true
+  });
+}
+
+function getCookie(req, name) {
+  const cookies = String(req.headers.cookie || '').split(';');
+  for (const cookie of cookies) {
+    const [key, ...value] = cookie.trim().split('=');
+    if (key === name) return decodeURIComponent(value.join('='));
+  }
+  return '';
+}
+
+function statusError(message, status) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
 }
 
 const creds = {
