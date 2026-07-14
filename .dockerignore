@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+.git
+.railway
+node_modules
+data
+ml-server/models
+ml-server/voices
+localhost+*.pem
+localhost+*-key.pem
+npm-debug.log*
+.DS_Store

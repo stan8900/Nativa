@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: nativa-backend
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: USE_HTTPS
+        value: "false"
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: ML_SERVER_BASE_URL
+        sync: false
+      - key: DEFAULT_VOICE_ID
+        value: default
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false

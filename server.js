@@ -2,6 +2,7 @@ import 'dotenv/config';
 import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
+import http from 'node:http';
 import https from 'node:https';
 import multer from 'multer';
 import path from 'node:path';
@@ -18,15 +19,29 @@ const upload = multer({
 });
 
 const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || '127.0.0.1';
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const ML_SERVER_BASE_URL = process.env.ML_SERVER_BASE_URL || 'http://127.0.0.1:8000';
 const ML_SERVER = ML_SERVER_BASE_URL;
-const DB_DIR = path.join(__dirname, 'data');
+const DB_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 const DB_PATH = path.join(DB_DIR, 'nativa-db.json');
 const SESSION_COOKIE = 'nativa_session';
+const OAUTH_STATE_COOKIE = 'nativa_oauth_state';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
+const USE_HTTPS = process.env.USE_HTTPS
+  ? process.env.USE_HTTPS !== 'false'
+  : !GOOGLE_CALLBACK_URL.startsWith('http://');
+const COOKIE_SECURE = process.env.COOKIE_SECURE
+  ? process.env.COOKIE_SECURE !== 'false'
+  : USE_HTTPS;
 let activeVoiceId = process.env.DEFAULT_VOICE_ID || 'default';
 
 app.use(express.static(path.join(__dirname, 'docs')));
+
+app.get('/healthz', (_req, res) => {
+  res.json({ ok: true });
+});
 
 app.post('/api/stt', async (req, res) => {
   await proxyRequest(req, res, '/stt');
@@ -49,6 +64,75 @@ app.post('/api/pipeline', async (req, res) => {
 });
 
 app.use(express.json({ limit: '1mb' }));
+
+app.get('/auth/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return res.status(500).send('Google OAuth is not configured.');
+  }
+
+  const state = crypto.randomBytes(24).toString('hex');
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: COOKIE_SECURE,
+    maxAge: 1000 * 60 * 10
+  });
+
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+  url.searchParams.set('redirect_uri', GOOGLE_CALLBACK_URL);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', state);
+  url.searchParams.set('prompt', 'select_account');
+
+  res.redirect(url.toString());
+});
+
+app.get(['/auth/google/redirect', '/auth/google/callback'], async (req, res) => {
+  try {
+    const expectedState = getCookie(req, OAUTH_STATE_COOKIE);
+    if (!expectedState || req.query.state !== expectedState) {
+      throw statusError('Invalid Google OAuth state.', 400);
+    }
+    if (!req.query.code) {
+      throw statusError('Google OAuth code is missing.', 400);
+    }
+
+    const profile = await fetchGoogleProfile(String(req.query.code));
+    const db = readDb();
+    const email = normalizeEmail(profile.email);
+    let user = db.users.find(item => item.email === email);
+
+    if (!user) {
+      user = {
+        id: crypto.randomUUID(),
+        name: profile.name || email.split('@')[0],
+        email,
+        googleId: profile.sub,
+        avatarUrl: profile.picture || '',
+        passwordHash: '',
+        sessions: [],
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(user);
+    } else {
+      user.googleId = user.googleId || profile.sub;
+      user.avatarUrl = profile.picture || user.avatarUrl || '';
+      user.name = user.name || profile.name || email.split('@')[0];
+    }
+
+    const session = createAuthSession(db, user.id);
+    writeDb(db);
+    clearOAuthStateCookie(res);
+    setSessionCookie(res, session.id);
+    res.redirect('/');
+  } catch (error) {
+    console.error('[Nativa Google OAuth error]', error);
+    clearOAuthStateCookie(res);
+    res.redirect('/?auth=google_error');
+  }
+});
 
 app.post('/api/register', async (req, res) => {
   try {
@@ -524,8 +608,42 @@ function publicUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    avatarUrl: user.avatarUrl || '',
     createdAt: user.createdAt
   };
+}
+
+async function fetchGoogleProfile(code) {
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: GOOGLE_CALLBACK_URL
+    })
+  });
+  const tokenPayload = await readJson(tokenResponse);
+  if (!tokenResponse.ok) {
+    throw apiError('Google token exchange failed', tokenResponse, tokenPayload);
+  }
+
+  const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: {
+      Authorization: `Bearer ${tokenPayload.access_token}`
+    }
+  });
+  const profile = await readJson(profileResponse);
+  if (!profileResponse.ok) {
+    throw apiError('Google profile request failed', profileResponse, profile);
+  }
+  if (!profile.email) {
+    throw statusError('Google profile did not include an email.', 400);
+  }
+
+  return profile;
 }
 
 function sanitizeSessions(sessions) {
@@ -567,7 +685,7 @@ function setSessionCookie(res, sessionId) {
   res.cookie(SESSION_COOKIE, sessionId, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: true,
+    secure: COOKIE_SECURE,
     maxAge: 1000 * 60 * 60 * 24 * 30
   });
 }
@@ -576,7 +694,15 @@ function clearSessionCookie(res) {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: true
+    secure: COOKIE_SECURE
+  });
+}
+
+function clearOAuthStateCookie(res) {
+  res.clearCookie(OAUTH_STATE_COOKIE, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: COOKIE_SECURE
   });
 }
 
@@ -595,12 +721,16 @@ function statusError(message, status) {
   return error;
 }
 
-const creds = {
-  key: fs.readFileSync('./localhost+1-key.pem'),
-  cert: fs.readFileSync('./localhost+1.pem')
-};
+const server = USE_HTTPS
+  ? https.createServer({
+    key: fs.readFileSync('./localhost+1-key.pem'),
+    cert: fs.readFileSync('./localhost+1.pem')
+  }, app)
+  : http.createServer(app);
 
-https.createServer(creds, app).listen(PORT, HOST, () => {
-  console.log(`Nativa web app running at https://${HOST}:${PORT}`);
+server.listen(PORT, HOST, () => {
+  const protocol = USE_HTTPS ? 'https' : 'http';
+  console.log(`Nativa web app running at ${protocol}://${HOST}:${PORT}`);
   console.log(`Nativa ML server expected at ${ML_SERVER_BASE_URL}`);
+  if (GOOGLE_CLIENT_ID) console.log(`Google OAuth callback at ${GOOGLE_CALLBACK_URL}`);
 });

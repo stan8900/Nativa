@@ -231,6 +231,10 @@ function showAuth() {
   state.currentUser = null;
   document.body.classList.remove('auth-pending', 'authenticated');
   document.body.classList.add('auth-required');
+  if (new URLSearchParams(window.location.search).get('auth') === 'google_error') {
+    setAuthMessage('Google login failed. Check OAuth settings and try again.');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 }
 
 async function signOut() {
