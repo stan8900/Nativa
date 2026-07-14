@@ -1,8 +1,10 @@
-const ML_SERVER = '/api';
+const ML_SERVER = getApiBaseUrl('/api');
 
 export async function health() {
   const started = performance.now();
-  const response = await fetch(`${ML_SERVER}/health`);
+  const response = await fetch(`${ML_SERVER}/health`, {
+    credentials: 'include'
+  });
   const payload = await response.json();
   return {
     ...payload,
@@ -18,6 +20,7 @@ export async function stt(audio, sourceLang = 'Russian') {
 
   const response = await fetch(`${ML_SERVER}/stt`, {
     method: 'POST',
+    credentials: 'include',
     body: form
   });
   const payload = await readJson(response);
@@ -34,6 +37,7 @@ export async function translate(text, src, tgt, history = []) {
   const response = await fetch(`${ML_SERVER}/translate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({
       sourceLang: src,
       targetLang: tgt,
@@ -61,6 +65,7 @@ export async function ttsStream(text, voiceId, language = 'ru') {
       'Content-Type': 'application/json',
       Accept: 'audio/mpeg, audio/wav'
     },
+    credentials: 'include',
     body: JSON.stringify({
       text,
       voice_id: voiceId,
@@ -80,6 +85,7 @@ export async function ttsStream(text, voiceId, language = 'ru') {
 export async function voiceClone(formData) {
   const response = await fetch(`${ML_SERVER}/voice-clone`, {
     method: 'POST',
+    credentials: 'include',
     body: formData
   });
   const payload = await readJson(response);
@@ -101,4 +107,13 @@ async function readJson(response) {
 function assertOk(response, payload, endpoint) {
   if (response.ok) return;
   throw new Error(`${endpoint} failed: ${payload.error || payload.raw || response.statusText}`);
+}
+
+function getApiBaseUrl(pathPrefix = '') {
+  const configured = window.NATIVA_API_BASE_URL;
+  if (configured) return `${configured.replace(/\/$/, '')}${pathPrefix}`;
+  if (window.location.hostname.endsWith('github.io')) {
+    return `https://nativa-backend-production.up.railway.app${pathPrefix}`;
+  }
+  return pathPrefix || '';
 }

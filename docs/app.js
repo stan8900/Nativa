@@ -12,6 +12,7 @@ const elements = {
   authPassword: document.querySelector('#authPassword'),
   authSubmit: document.querySelector('#authSubmit'),
   authMessage: document.querySelector('#authMessage'),
+  googleLoginButton: document.querySelector('#googleLoginButton'),
   dashboardView: document.querySelector('#dashboardView'),
   projectView: document.querySelector('#projectView'),
   dashboardHomeButton: document.querySelector('#dashboardHomeButton'),
@@ -87,6 +88,7 @@ const state = {
 };
 
 const SESSIONS_KEY = 'nativa.sessions';
+const API_BASE_URL = getApiBaseUrl();
 let saveSessionsTimer = null;
 const SILENCE_MS = 500;
 const MIN_RECORDING_MS = 450;
@@ -118,6 +120,7 @@ async function init() {
   renderHistory();
   renderLatencyTable();
   setAuthMode('login');
+  elements.googleLoginButton.href = `${API_BASE_URL}/auth/google`;
 
   try {
     const { user } = await apiJson('/api/me');
@@ -1043,11 +1046,12 @@ function formatMs(value) {
 }
 
 async function apiJson(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {})
     },
+    credentials: 'include',
     ...options
   });
   const text = await response.text();
@@ -1058,6 +1062,19 @@ async function apiJson(url, options = {}) {
   }
 
   return payload;
+}
+
+function apiUrl(pathname) {
+  if (/^https?:\/\//.test(pathname)) return pathname;
+  return `${API_BASE_URL}${pathname}`;
+}
+
+function getApiBaseUrl() {
+  if (window.NATIVA_API_BASE_URL) return window.NATIVA_API_BASE_URL.replace(/\/$/, '');
+  if (window.location.hostname.endsWith('github.io')) {
+    return 'https://nativa-backend-production.up.railway.app';
+  }
+  return '';
 }
 
 function escapeHtml(value) {

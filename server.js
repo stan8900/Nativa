@@ -29,14 +29,18 @@ const OAUTH_STATE_COOKIE = 'nativa_oauth_state';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
+const FRONTEND_URL = process.env.FRONTEND_URL || '/';
+const CORS_ORIGINS = parseCorsOrigins(process.env.CORS_ORIGINS || process.env.FRONTEND_ORIGIN || '');
 const USE_HTTPS = process.env.USE_HTTPS
   ? process.env.USE_HTTPS !== 'false'
   : !GOOGLE_CALLBACK_URL.startsWith('http://');
 const COOKIE_SECURE = process.env.COOKIE_SECURE
   ? process.env.COOKIE_SECURE !== 'false'
   : USE_HTTPS;
+const SESSION_COOKIE_SAME_SITE = process.env.SESSION_COOKIE_SAME_SITE || (COOKIE_SECURE ? 'none' : 'lax');
 let activeVoiceId = process.env.DEFAULT_VOICE_ID || 'default';
 
+app.use(corsMiddleware);
 app.use(express.static(path.join(__dirname, 'docs')));
 
 app.get('/healthz', (_req, res) => {
@@ -126,7 +130,7 @@ app.get(['/auth/google/redirect', '/auth/google/callback'], async (req, res) => 
     writeDb(db);
     clearOAuthStateCookie(res);
     setSessionCookie(res, session.id);
-    res.redirect('/');
+    res.redirect(FRONTEND_URL);
   } catch (error) {
     console.error('[Nativa Google OAuth error]', error);
     clearOAuthStateCookie(res);
@@ -613,6 +617,44 @@ function publicUser(user) {
   };
 }
 
+function corsMiddleware(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'Content-Type, Accept');
+    res.status(204).end();
+    return;
+  }
+
+  next();
+}
+
+function isAllowedOrigin(origin) {
+  if (CORS_ORIGINS.has(origin)) return true;
+
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === 'https:' && hostname.endsWith('.github.io');
+  } catch {
+    return false;
+  }
+}
+
+function parseCorsOrigins(value) {
+  return new Set(
+    String(value || '')
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(Boolean)
+  );
+}
+
 async function fetchGoogleProfile(code) {
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -684,7 +726,7 @@ function ensureDb() {
 function setSessionCookie(res, sessionId) {
   res.cookie(SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: SESSION_COOKIE_SAME_SITE,
     secure: COOKIE_SECURE,
     maxAge: 1000 * 60 * 60 * 24 * 30
   });
@@ -693,7 +735,7 @@ function setSessionCookie(res, sessionId) {
 function clearSessionCookie(res) {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: SESSION_COOKIE_SAME_SITE,
     secure: COOKIE_SECURE
   });
 }
