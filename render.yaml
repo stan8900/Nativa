@@ -24,3 +24,7 @@ services:
         sync: false
       - key: GOOGLE_CALLBACK_URL
         sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false

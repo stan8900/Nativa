@@ -6,6 +6,7 @@ import http from 'node:http';
 import https from 'node:https';
 import multer from 'multer';
 import path from 'node:path';
+import tls from 'node:tls';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,10 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
 const FRONTEND_URL = process.env.FRONTEND_URL || '/';
+const GMAIL_USER = process.env.GMAIL_USER || process.env.SMTP_USER || '';
+const GMAIL_APP_PASSWORD = String(process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || '').replace(/\s/g, '');
+const OTP_TTL_MS = Number(process.env.OTP_TTL_MS || 10 * 60 * 1000);
+const OTP_RESEND_MS = Number(process.env.OTP_RESEND_MS || 60 * 1000);
 const CORS_ORIGINS = parseCorsOrigins(process.env.CORS_ORIGINS || process.env.FRONTEND_ORIGIN || '');
 const USE_HTTPS = process.env.USE_HTTPS
   ? process.env.USE_HTTPS !== 'false'
@@ -184,6 +189,108 @@ app.post('/api/login', async (req, res) => {
     res.json({ user: publicUser(user) });
   } catch (error) {
     res.status(400).json({ error: error.message || 'Login failed.' });
+  }
+});
+
+app.post('/api/request-otp', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const name = String(req.body?.name || '').trim();
+
+    if (!isValidEmail(email)) {
+      throw statusError('Enter a valid email.', 400);
+    }
+    if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+      throw statusError('Gmail OTP is not configured on the server.', 500);
+    }
+
+    const db = readDb();
+    db.otpChallenges = cleanupOtpChallenges(db.otpChallenges);
+    const existing = db.otpChallenges.find(item => item.email === email);
+    const issuedAt = Date.now();
+
+    if (existing && issuedAt - Number(existing.createdAtMs || 0) < OTP_RESEND_MS) {
+      throw statusError('Please wait before requesting another code.', 429);
+    }
+
+    const code = createOtpCode();
+    const challenge = {
+      email,
+      name: name.slice(0, 80),
+      codeHash: await hashPassword(code),
+      createdAtMs: issuedAt,
+      expiresAtMs: issuedAt + OTP_TTL_MS,
+      attempts: 0
+    };
+
+    db.otpChallenges = [
+      ...db.otpChallenges.filter(item => item.email !== email),
+      challenge
+    ].slice(-100);
+    writeDb(db);
+
+    await sendOtpEmail({ to: email, code });
+    res.json({ ok: true, message: 'Code sent.' });
+  } catch (error) {
+    console.error('[Nativa OTP request error]', error);
+    res.status(error.status || 500).json({ error: error.message || 'Could not send OTP.' });
+  }
+});
+
+app.post('/api/verify-otp', async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const code = String(req.body?.code || '').replace(/\D/g, '');
+    const fallbackName = String(req.body?.name || '').trim();
+
+    if (!isValidEmail(email)) {
+      throw statusError('Enter a valid email.', 400);
+    }
+    if (code.length !== 6) {
+      throw statusError('Enter the 6-digit code.', 400);
+    }
+
+    const db = readDb();
+    db.otpChallenges = cleanupOtpChallenges(db.otpChallenges);
+    const challenge = db.otpChallenges.find(item => item.email === email);
+
+    if (!challenge || Number(challenge.expiresAtMs || 0) < Date.now()) {
+      throw statusError('Code expired. Request a new one.', 400);
+    }
+    if (Number(challenge.attempts || 0) >= 5) {
+      db.otpChallenges = db.otpChallenges.filter(item => item.email !== email);
+      writeDb(db);
+      throw statusError('Too many attempts. Request a new code.', 429);
+    }
+
+    const isValid = await verifyPassword(code, challenge.codeHash);
+    if (!isValid) {
+      challenge.attempts = Number(challenge.attempts || 0) + 1;
+      writeDb(db);
+      throw statusError('Invalid code.', 401);
+    }
+
+    let user = db.users.find(item => item.email === email);
+    if (!user) {
+      const name = challenge.name || fallbackName || email.split('@')[0];
+      user = {
+        id: crypto.randomUUID(),
+        name,
+        email,
+        passwordHash: '',
+        sessions: [],
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(user);
+    }
+
+    db.otpChallenges = db.otpChallenges.filter(item => item.email !== email);
+    const session = createAuthSession(db, user.id);
+    writeDb(db);
+    setSessionCookie(res, session.id);
+    res.json({ user: publicUser(user) });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message || 'OTP verification failed.' });
   }
 });
 
@@ -548,7 +655,7 @@ function normalizeCredentials(body = {}) {
   const password = String(body.password || '');
 
   if (name.length < 2) throw statusError('Name must be at least 2 characters.', 400);
-  if (!email.includes('@') || email.length < 5) throw statusError('Enter a valid email.', 400);
+  if (!isValidEmail(email)) throw statusError('Enter a valid email.', 400);
   if (password.length < 6) throw statusError('Password must be at least 6 characters.', 400);
 
   return { name, email, password };
@@ -556,6 +663,14 @@ function normalizeCredentials(body = {}) {
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email);
+}
+
+function createOtpCode() {
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 async function hashPassword(password) {
@@ -700,16 +815,114 @@ function sanitizeSessions(sessions) {
   }));
 }
 
+function cleanupOtpChallenges(challenges = []) {
+  const nowMs = Date.now();
+  return Array.isArray(challenges)
+    ? challenges.filter(item => Number(item.expiresAtMs || 0) > nowMs)
+    : [];
+}
+
+async function sendOtpEmail({ to, code }) {
+  const subject = 'Your Nativa login code';
+  const body = [
+    `Your Nativa verification code is ${code}.`,
+    '',
+    `This code expires in ${Math.max(1, Math.round(OTP_TTL_MS / 60000))} minutes.`,
+    'If you did not request this code, you can ignore this email.'
+  ].join('\r\n');
+
+  await sendGmailMessage({
+    to,
+    subject,
+    text: body
+  });
+}
+
+function sendGmailMessage({ to, subject, text }) {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect(465, 'smtp.gmail.com', { servername: 'smtp.gmail.com' });
+    let buffer = '';
+    const commands = [
+      'EHLO nativa.local',
+      'AUTH LOGIN',
+      Buffer.from(GMAIL_USER).toString('base64'),
+      Buffer.from(GMAIL_APP_PASSWORD).toString('base64'),
+      `MAIL FROM:<${GMAIL_USER}>`,
+      `RCPT TO:<${to}>`,
+      'DATA',
+      buildEmailMessage({ to, subject, text }),
+      'QUIT'
+    ];
+    let commandIndex = 0;
+
+    socket.setTimeout(15000);
+
+    socket.on('data', chunk => {
+      buffer += chunk.toString('utf8');
+      if (!buffer.endsWith('\r\n')) return;
+
+      const lines = buffer.trim().split(/\r?\n/);
+      const lastLine = lines[lines.length - 1] || '';
+      if (/^\d{3}-/.test(lastLine)) return;
+
+      const status = Number(lastLine.slice(0, 3));
+      buffer = '';
+
+      if (status >= 400) {
+        socket.destroy();
+        reject(statusError(`Gmail SMTP failed: ${lastLine}`, 502));
+        return;
+      }
+
+      if (commandIndex >= commands.length) {
+        socket.end();
+        resolve();
+        return;
+      }
+
+      socket.write(`${commands[commandIndex]}\r\n`);
+      commandIndex += 1;
+    });
+
+    socket.on('timeout', () => {
+      socket.destroy();
+      reject(statusError('Gmail SMTP timed out.', 504));
+    });
+    socket.on('error', error => reject(error));
+  });
+}
+
+function buildEmailMessage({ to, subject, text }) {
+  const headers = [
+    `From: ${mimeHeader('Nativa')} <${GMAIL_USER}>`,
+    `To: <${to}>`,
+    `Subject: ${mimeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit'
+  ];
+  const safeText = String(text || '').replace(/^\./gm, '..');
+  return `${headers.join('\r\n')}\r\n\r\n${safeText}\r\n.`;
+}
+
+function mimeHeader(value) {
+  const text = String(value || '');
+  return /^[\x20-\x7e]*$/.test(text)
+    ? text
+    : `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
+}
+
 function readDb() {
   ensureDb();
   try {
     const parsed = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
     return {
       users: Array.isArray(parsed.users) ? parsed.users : [],
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : []
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      otpChallenges: cleanupOtpChallenges(parsed.otpChallenges)
     };
   } catch {
-    return { users: [], sessions: [] };
+    return { users: [], sessions: [], otpChallenges: [] };
   }
 }
 
@@ -720,7 +933,7 @@ function writeDb(db) {
 
 function ensureDb() {
   if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, `${JSON.stringify({ users: [], sessions: [] }, null, 2)}\n`);
+  if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, `${JSON.stringify({ users: [], sessions: [], otpChallenges: [] }, null, 2)}\n`);
 }
 
 function setSessionCookie(res, sessionId) {

@@ -23,6 +23,7 @@
         <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
           <button class="active" id="loginTab" type="button">Login</button>
           <button id="registerTab" type="button">Register</button>
+          <button id="otpTab" type="button">OTP</button>
         </div>
 
         <a class="google-login-button" id="googleLoginButton" href="/auth/google">
@@ -44,6 +45,13 @@
           <label>
             <span>Password</span>
             <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimum 6 characters" required>
+          </label>
+          <label class="auth-otp-field" id="authOtpField">
+            <span>Code</span>
+            <div class="auth-otp-row">
+              <input id="authOtpCode" name="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">
+              <button id="authOtpButton" type="button">Send code</button>
+            </div>
           </label>
           <button class="auth-submit" id="authSubmit" type="submit">Login</button>
           <p class="auth-message" id="authMessage" role="status"></p>

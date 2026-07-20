@@ -33,9 +33,11 @@ ML_SERVER_BASE_URL=http://127.0.0.1:8000
 DEFAULT_VOICE_ID=default
 PORT=3000
 HOST=127.0.0.1
+GMAIL_USER=your-address@gmail.com
+GMAIL_APP_PASSWORD=your-16-character-gmail-app-password
 ```
 
-No API keys are required.
+`GMAIL_USER` and `GMAIL_APP_PASSWORD` are only required for OTP login. Use a Gmail app password, not your normal Gmail password. In your Google account, enable 2-step verification, create an app password for Mail, then use that value as `GMAIL_APP_PASSWORD`.
 
 ## Run
 

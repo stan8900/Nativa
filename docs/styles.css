@@ -93,7 +93,7 @@ button {
 
 .auth-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 6px;
   margin-bottom: 18px;
   border: 1px solid var(--border);
@@ -196,6 +196,43 @@ button {
 
 .auth-form .auth-name-field.active {
   display: grid;
+}
+
+.auth-form .auth-otp-field {
+  display: none;
+}
+
+.auth-form .auth-otp-field.active {
+  display: grid;
+}
+
+.auth-form .hidden {
+  display: none;
+}
+
+.auth-otp-row {
+  display: grid;
+  grid-template-columns: 1fr 112px;
+  gap: 8px;
+}
+
+.auth-otp-row button {
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-otp-row button:hover {
+  border-color: var(--accent);
+}
+
+.auth-otp-row button:disabled {
+  cursor: progress;
+  opacity: 0.7;
 }
 
 .auth-submit {

@@ -6,10 +6,14 @@ const elements = {
   authForm: document.querySelector('#authForm'),
   loginTab: document.querySelector('#loginTab'),
   registerTab: document.querySelector('#registerTab'),
+  otpTab: document.querySelector('#otpTab'),
   authNameField: document.querySelector('#authNameField'),
   authName: document.querySelector('#authName'),
   authEmail: document.querySelector('#authEmail'),
   authPassword: document.querySelector('#authPassword'),
+  authOtpField: document.querySelector('#authOtpField'),
+  authOtpCode: document.querySelector('#authOtpCode'),
+  authOtpButton: document.querySelector('#authOtpButton'),
   authSubmit: document.querySelector('#authSubmit'),
   authMessage: document.querySelector('#authMessage'),
   googleLoginButton: document.querySelector('#googleLoginButton'),
@@ -133,7 +137,9 @@ async function init() {
 function bindEvents() {
   elements.loginTab.addEventListener('click', () => setAuthMode('login'));
   elements.registerTab.addEventListener('click', () => setAuthMode('register'));
+  elements.otpTab.addEventListener('click', () => setAuthMode('otp'));
   elements.authForm.addEventListener('submit', handleAuthSubmit);
+  elements.authOtpButton.addEventListener('click', requestOtpCode);
   elements.signOutButton.addEventListener('click', signOut);
   elements.dashboardHomeButton.addEventListener('click', showDashboard);
   elements.recentNavButton.addEventListener('click', showDashboard);
@@ -185,12 +191,18 @@ function bindEvents() {
 function setAuthMode(mode) {
   state.authMode = mode;
   const isRegister = mode === 'register';
-  elements.loginTab.classList.toggle('active', !isRegister);
+  const isOtp = mode === 'otp';
+  elements.loginTab.classList.toggle('active', mode === 'login');
   elements.registerTab.classList.toggle('active', isRegister);
+  elements.otpTab.classList.toggle('active', isOtp);
   elements.authNameField.classList.toggle('active', isRegister);
   elements.authName.required = isRegister;
+  elements.authPassword.closest('label').classList.toggle('hidden', isOtp);
+  elements.authPassword.required = !isOtp;
+  elements.authOtpField.classList.toggle('active', isOtp);
+  elements.authOtpCode.required = isOtp;
   elements.authPassword.autocomplete = isRegister ? 'new-password' : 'current-password';
-  elements.authSubmit.textContent = isRegister ? 'Create account' : 'Login';
+  elements.authSubmit.textContent = isOtp ? 'Verify code' : isRegister ? 'Create account' : 'Login';
   setAuthMessage('');
 }
 
@@ -200,6 +212,20 @@ async function handleAuthSubmit(event) {
   elements.authSubmit.disabled = true;
 
   try {
+    if (state.authMode === 'otp') {
+      const { user } = await apiJson('/api/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: elements.authEmail.value,
+          code: elements.authOtpCode.value,
+          name: elements.authName.value
+        })
+      });
+      elements.authForm.reset();
+      await enterApp(user);
+      return;
+    }
+
     const endpoint = state.authMode === 'register' ? '/api/register' : '/api/login';
     const payload = {
       email: elements.authEmail.value,
@@ -217,6 +243,26 @@ async function handleAuthSubmit(event) {
     setAuthMessage(error.message || 'Authentication failed.');
   } finally {
     elements.authSubmit.disabled = false;
+  }
+}
+
+async function requestOtpCode() {
+  setAuthMessage('');
+  elements.authOtpButton.disabled = true;
+
+  try {
+    await apiJson('/api/request-otp', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: elements.authEmail.value,
+        name: elements.authName.value
+      })
+    });
+    setAuthMessage('Code sent. Check your email.', 'ok');
+  } catch (error) {
+    setAuthMessage(error.message || 'Could not send code.');
+  } finally {
+    elements.authOtpButton.disabled = false;
   }
 }
 
