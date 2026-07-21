@@ -233,10 +233,18 @@ async function handleAuthSubmit(event) {
     };
     if (state.authMode === 'register') payload.name = elements.authName.value;
 
-    const { user } = await apiJson(endpoint, {
+    const result = await apiJson(endpoint, {
       method: 'POST',
       body: JSON.stringify(payload)
     });
+
+    if (state.authMode === 'register') {
+      setAuthMode('otp');
+      setAuthMessage('Code sent. Check your email.', 'ok');
+      return;
+    }
+
+    const { user } = result;
     elements.authForm.reset();
     await enterApp(user);
   } catch (error) {

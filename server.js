@@ -151,22 +151,38 @@ app.post('/api/register', async (req, res) => {
     if (db.users.some(user => user.email === email)) {
       return res.status(409).json({ error: 'Email is already registered.' });
     }
+    if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+      throw statusError('Gmail OTP is not configured on the server.', 500);
+    }
+
+    db.otpChallenges = cleanupOtpChallenges(db.otpChallenges);
+    const existing = db.otpChallenges.find(item => item.email === email);
+    const issuedAt = Date.now();
+
+    if (existing && issuedAt - Number(existing.createdAtMs || 0) < OTP_RESEND_MS) {
+      throw statusError('Please wait before requesting another code.', 429);
+    }
 
     const passwordHash = await hashPassword(password);
-    const user = {
-      id: crypto.randomUUID(),
-      name,
+    const code = createOtpCode();
+    const challenge = {
       email,
+      name,
       passwordHash,
-      sessions: [],
-      createdAt: new Date().toISOString()
+      codeHash: await hashPassword(code),
+      createdAtMs: issuedAt,
+      expiresAtMs: issuedAt + OTP_TTL_MS,
+      attempts: 0
     };
 
-    db.users.push(user);
-    const session = createAuthSession(db, user.id);
+    db.otpChallenges = [
+      ...db.otpChallenges.filter(item => item.email !== email),
+      challenge
+    ].slice(-100);
+
+    await sendOtpEmail({ to: email, code });
     writeDb(db);
-    setSessionCookie(res, session.id);
-    res.status(201).json({ user: publicUser(user) });
+    res.status(202).json({ ok: true, message: 'Code sent.' });
   } catch (error) {
     res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
   }
@@ -227,9 +243,9 @@ app.post('/api/request-otp', async (req, res) => {
       ...db.otpChallenges.filter(item => item.email !== email),
       challenge
     ].slice(-100);
-    writeDb(db);
 
     await sendOtpEmail({ to: email, code });
+    writeDb(db);
     res.json({ ok: true, message: 'Code sent.' });
   } catch (error) {
     console.error('[Nativa OTP request error]', error);
@@ -277,7 +293,7 @@ app.post('/api/verify-otp', async (req, res) => {
         id: crypto.randomUUID(),
         name,
         email,
-        passwordHash: '',
+        passwordHash: challenge.passwordHash || '',
         sessions: [],
         createdAt: new Date().toISOString()
       };
