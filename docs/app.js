@@ -27,7 +27,7 @@ const elements = {
   authSubmit: document.querySelector('#authSubmit'),
   authMessage: document.querySelector('#authMessage'),
   googleLoginButton: document.querySelector('#googleLoginButton'),
-  appleLoginButton: document.querySelector('#appleLoginButton'),
+  facebookLoginButton: document.querySelector('#facebookLoginButton'),
   dashboardView: document.querySelector('#dashboardView'),
   projectView: document.querySelector('#projectView'),
   dashboardHomeButton: document.querySelector('#dashboardHomeButton'),
@@ -148,7 +148,7 @@ async function init() {
   renderLatencyTable();
   setAuthMode('login');
   elements.googleLoginButton.href = `${API_BASE_URL}/auth/google`;
-  elements.appleLoginButton.href = `${API_BASE_URL}/auth/apple`;
+  elements.facebookLoginButton.href = `${API_BASE_URL}/auth/facebook`;
 
   try {
     const { user } = await apiJson('/api/me');
@@ -451,8 +451,8 @@ function showAuth() {
   document.body.classList.remove('auth-pending', 'authenticated', 'public-active');
   document.body.classList.add('auth-required');
   const authError = new URLSearchParams(window.location.search).get('auth');
-  if (authError === 'google_error' || authError === 'apple_error') {
-    const provider = authError === 'apple_error' ? 'Apple' : 'Google';
+  if (authError === 'google_error' || authError === 'facebook_error') {
+    const provider = authError === 'facebook_error' ? 'Facebook' : 'Google';
     setAuthMessage(`${provider} login failed. Check OAuth settings and try again.`);
     window.history.replaceState({}, '', window.location.pathname);
   }

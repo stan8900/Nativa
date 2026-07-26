@@ -30,11 +30,9 @@ const OAUTH_STATE_COOKIE = 'nativa_oauth_state';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
-const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || '';
-const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID || '';
-const APPLE_KEY_ID = process.env.APPLE_KEY_ID || '';
-const APPLE_PRIVATE_KEY = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-const APPLE_CALLBACK_URL = process.env.APPLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/apple/callback`;
+const FACEBOOK_CLIENT_ID = process.env.FACEBOOK_CLIENT_ID || '';
+const FACEBOOK_CLIENT_SECRET = process.env.FACEBOOK_CLIENT_SECRET || '';
+const FACEBOOK_CALLBACK_URL = process.env.FACEBOOK_CALLBACK_URL || `https://${HOST}:${PORT}/auth/facebook/callback`;
 const FRONTEND_URL = process.env.FRONTEND_URL || '/';
 const GMAIL_USER = process.env.GMAIL_USER || process.env.SMTP_USER || '';
 const GMAIL_API_CLIENT_ID = process.env.GMAIL_API_CLIENT_ID || GOOGLE_CLIENT_ID;
@@ -80,7 +78,6 @@ app.post('/api/pipeline', async (req, res) => {
   await proxyRequest(req, res, '/pipeline', { forceContentType: 'audio/wav', exposeXHeaders: true });
 });
 
-app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/auth/google', (req, res) => {
@@ -102,37 +99,35 @@ app.get('/auth/google', (req, res) => {
   res.redirect(url.toString());
 });
 
-app.get('/auth/apple', (req, res) => {
-  if (!isAppleOAuthConfigured()) {
-    return res.status(500).send('Apple OAuth is not configured.');
+app.get('/auth/facebook', (req, res) => {
+  if (!FACEBOOK_CLIENT_ID || !FACEBOOK_CLIENT_SECRET) {
+    return res.status(500).send('Facebook OAuth is not configured.');
   }
 
   const state = crypto.randomBytes(24).toString('hex');
   setOAuthStateCookie(res, state);
 
-  const url = new URL('https://appleid.apple.com/auth/authorize');
-  url.searchParams.set('client_id', APPLE_CLIENT_ID);
-  url.searchParams.set('redirect_uri', APPLE_CALLBACK_URL);
+  const url = new URL('https://www.facebook.com/v20.0/dialog/oauth');
+  url.searchParams.set('client_id', FACEBOOK_CLIENT_ID);
+  url.searchParams.set('redirect_uri', FACEBOOK_CALLBACK_URL);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('response_mode', 'form_post');
-  url.searchParams.set('scope', 'name email');
+  url.searchParams.set('scope', 'email,public_profile');
   url.searchParams.set('state', state);
 
   res.redirect(url.toString());
 });
 
-app.all('/auth/apple/callback', async (req, res) => {
+app.get('/auth/facebook/callback', async (req, res) => {
   try {
     const expectedState = getCookie(req, OAUTH_STATE_COOKIE);
-    const params = req.method === 'POST' ? req.body : req.query;
-    if (!expectedState || params?.state !== expectedState) {
-      throw statusError('Invalid Apple OAuth state.', 400);
+    if (!expectedState || req.query.state !== expectedState) {
+      throw statusError('Invalid Facebook OAuth state.', 400);
     }
-    if (!params?.code) {
-      throw statusError('Apple OAuth code is missing.', 400);
+    if (!req.query.code) {
+      throw statusError('Facebook OAuth code is missing.', 400);
     }
 
-    const profile = await fetchAppleProfile(String(params.code), params.user);
+    const profile = await fetchFacebookProfile(String(req.query.code));
     const db = readDb();
     const email = normalizeEmail(profile.email);
     let user = db.users.find(item => item.email === email);
@@ -142,15 +137,16 @@ app.all('/auth/apple/callback', async (req, res) => {
         id: crypto.randomUUID(),
         name: profile.name || email.split('@')[0],
         email,
-        appleId: profile.sub,
-        avatarUrl: '',
+        facebookId: profile.id,
+        avatarUrl: profile.picture || '',
         passwordHash: '',
         sessions: [],
         createdAt: new Date().toISOString()
       };
       db.users.push(user);
     } else {
-      user.appleId = user.appleId || profile.sub;
+      user.facebookId = user.facebookId || profile.id;
+      user.avatarUrl = profile.picture || user.avatarUrl || '';
       user.name = user.name || profile.name || email.split('@')[0];
     }
 
@@ -160,9 +156,9 @@ app.all('/auth/apple/callback', async (req, res) => {
     setSessionCookie(res, session.id);
     res.redirect(FRONTEND_URL);
   } catch (error) {
-    console.error('[Nativa Apple OAuth error]', error);
+    console.error('[Nativa Facebook OAuth error]', error);
     clearOAuthStateCookie(res);
-    res.redirect(authErrorUrl('apple_error'));
+    res.redirect(authErrorUrl('facebook_error'));
   }
 });
 
@@ -896,116 +892,38 @@ async function fetchGoogleProfile(code) {
   return profile;
 }
 
-async function fetchAppleProfile(code, rawUser) {
-  const tokenResponse = await fetch('https://appleid.apple.com/auth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: APPLE_CLIENT_ID,
-      client_secret: createAppleClientSecret(),
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: APPLE_CALLBACK_URL
-    })
-  });
+async function fetchFacebookProfile(code) {
+  const tokenUrl = new URL('https://graph.facebook.com/v20.0/oauth/access_token');
+  tokenUrl.searchParams.set('client_id', FACEBOOK_CLIENT_ID);
+  tokenUrl.searchParams.set('client_secret', FACEBOOK_CLIENT_SECRET);
+  tokenUrl.searchParams.set('redirect_uri', FACEBOOK_CALLBACK_URL);
+  tokenUrl.searchParams.set('code', code);
+
+  const tokenResponse = await fetch(tokenUrl);
   const tokenPayload = await readJson(tokenResponse);
-  if (!tokenResponse.ok || !tokenPayload.id_token) {
-    throw apiError('Apple token exchange failed', tokenResponse, tokenPayload);
+  if (!tokenResponse.ok || !tokenPayload.access_token) {
+    throw apiError('Facebook token exchange failed', tokenResponse, tokenPayload);
   }
 
-  const claims = await verifyAppleIdToken(tokenPayload.id_token);
-  if (!claims.email) {
-    throw statusError('Apple profile did not include an email.', 400);
+  const profileUrl = new URL('https://graph.facebook.com/me');
+  profileUrl.searchParams.set('fields', 'id,name,email,picture');
+  profileUrl.searchParams.set('access_token', tokenPayload.access_token);
+
+  const profileResponse = await fetch(profileUrl);
+  const profile = await readJson(profileResponse);
+  if (!profileResponse.ok) {
+    throw apiError('Facebook profile request failed', profileResponse, profile);
+  }
+  if (!profile.email) {
+    throw statusError('Facebook profile did not include an email.', 400);
   }
 
   return {
-    sub: claims.sub,
-    email: claims.email,
-    name: appleDisplayName(rawUser)
+    id: String(profile.id || ''),
+    name: profile.name || '',
+    email: profile.email,
+    picture: profile.picture?.data?.url || ''
   };
-}
-
-function createAppleClientSecret() {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const header = {
-    alg: 'ES256',
-    kid: APPLE_KEY_ID,
-    typ: 'JWT'
-  };
-  const payload = {
-    iss: APPLE_TEAM_ID,
-    iat: nowSeconds,
-    exp: nowSeconds + 60 * 60 * 24 * 180,
-    aud: 'https://appleid.apple.com',
-    sub: APPLE_CLIENT_ID
-  };
-  const signingInput = [
-    base64UrlEncode(JSON.stringify(header)),
-    base64UrlEncode(JSON.stringify(payload))
-  ].join('.');
-  const signature = crypto.sign('sha256', Buffer.from(signingInput), {
-    key: APPLE_PRIVATE_KEY,
-    dsaEncoding: 'ieee-p1363'
-  });
-
-  return `${signingInput}.${base64UrlEncodeBuffer(signature)}`;
-}
-
-async function verifyAppleIdToken(idToken) {
-  const [encodedHeader, encodedPayload, encodedSignature] = String(idToken || '').split('.');
-  if (!encodedHeader || !encodedPayload || !encodedSignature) {
-    throw statusError('Apple returned an invalid identity token.', 400);
-  }
-
-  const header = JSON.parse(base64UrlDecode(encodedHeader).toString('utf8'));
-  const claims = JSON.parse(base64UrlDecode(encodedPayload).toString('utf8'));
-  const response = await fetch('https://appleid.apple.com/auth/keys');
-  const jwks = await readJson(response);
-  if (!response.ok) {
-    throw apiError('Apple key request failed', response, jwks);
-  }
-
-  const jwk = Array.isArray(jwks.keys)
-    ? jwks.keys.find(key => key.kid === header.kid && key.alg === 'RS256')
-    : null;
-  if (!jwk) {
-    throw statusError('Apple signing key was not found.', 400);
-  }
-
-  const isValid = crypto.verify(
-    'sha256',
-    Buffer.from(`${encodedHeader}.${encodedPayload}`),
-    crypto.createPublicKey({ key: jwk, format: 'jwk' }),
-    base64UrlDecode(encodedSignature)
-  );
-  if (!isValid) {
-    throw statusError('Apple identity token signature is invalid.', 400);
-  }
-  if (claims.iss !== 'https://appleid.apple.com' || claims.aud !== APPLE_CLIENT_ID) {
-    throw statusError('Apple identity token audience is invalid.', 400);
-  }
-  if (Number(claims.exp || 0) * 1000 < Date.now()) {
-    throw statusError('Apple identity token expired.', 400);
-  }
-
-  return claims;
-}
-
-function appleDisplayName(rawUser) {
-  if (!rawUser) return '';
-
-  try {
-    const parsed = typeof rawUser === 'string' ? JSON.parse(rawUser) : rawUser;
-    const firstName = String(parsed?.name?.firstName || '').trim();
-    const lastName = String(parsed?.name?.lastName || '').trim();
-    return [firstName, lastName].filter(Boolean).join(' ');
-  } catch {
-    return '';
-  }
-}
-
-function isAppleOAuthConfigured() {
-  return Boolean(APPLE_CLIENT_ID && APPLE_TEAM_ID && APPLE_KEY_ID && APPLE_PRIVATE_KEY);
 }
 
 function sanitizeSessions(sessions) {
@@ -1119,19 +1037,6 @@ function base64UrlEncode(value) {
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replace(/=+$/, '');
-}
-
-function base64UrlEncodeBuffer(value) {
-  return Buffer.from(value)
-    .toString('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '');
-}
-
-function base64UrlDecode(value) {
-  const normalized = String(value || '').replaceAll('-', '+').replaceAll('_', '/');
-  return Buffer.from(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='), 'base64');
 }
 
 function sendGmailSmtpMessage({ to, subject, text }) {
@@ -1335,5 +1240,5 @@ server.listen(PORT, HOST, () => {
   console.log(`Nativa web app running at ${protocol}://${HOST}:${PORT}`);
   console.log(`Nativa ML server expected at ${ML_SERVER_BASE_URL}`);
   if (GOOGLE_CLIENT_ID) console.log(`Google OAuth callback at ${GOOGLE_CALLBACK_URL}`);
-  if (APPLE_CLIENT_ID) console.log(`Apple OAuth callback at ${APPLE_CALLBACK_URL}`);
+  if (FACEBOOK_CLIENT_ID) console.log(`Facebook OAuth callback at ${FACEBOOK_CALLBACK_URL}`);
 });

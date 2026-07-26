@@ -494,7 +494,7 @@ body.public-active .public-site {
   font-weight: 800;
 }
 
-.apple-login-button {
+.facebook-login-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -510,13 +510,15 @@ body.public-active .public-site {
   text-decoration: none;
 }
 
-.apple-login-button:hover {
+.facebook-login-button:hover {
   border-color: rgba(143, 125, 216, 0.72);
   background: rgba(255, 255, 255, 0.09);
 }
 
-.apple-login-button span {
-  font-size: 12px;
+.facebook-login-button span {
+  color: #1877f2;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .auth-divider {
