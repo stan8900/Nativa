@@ -196,7 +196,7 @@ function setAuthMode(mode) {
   elements.registerTab.classList.toggle('active', isRegister);
   elements.otpTab.classList.toggle('active', isOtp);
   elements.authNameField.classList.toggle('active', isRegister);
-  elements.authName.required = isRegister;
+  elements.authName.required = false;
   elements.authPassword.closest('label').classList.toggle('hidden', isOtp);
   elements.authPassword.required = !isOtp;
   elements.authOtpField.classList.toggle('active', isOtp);

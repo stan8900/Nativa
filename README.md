@@ -34,10 +34,12 @@ DEFAULT_VOICE_ID=default
 PORT=3000
 HOST=127.0.0.1
 GMAIL_USER=your-address@gmail.com
-GMAIL_APP_PASSWORD=your-16-character-gmail-app-password
+GMAIL_API_CLIENT_ID=your-gmail-api-client-id.apps.googleusercontent.com
+GMAIL_API_CLIENT_SECRET=your-gmail-api-client-secret
+GMAIL_REFRESH_TOKEN=your-gmail-refresh-token
 ```
 
-`GMAIL_USER` and `GMAIL_APP_PASSWORD` are only required for OTP login. Use a Gmail app password, not your normal Gmail password. In your Google account, enable 2-step verification, create an app password for Mail, then use that value as `GMAIL_APP_PASSWORD`.
+These Gmail API variables are required for OTP login on Railway. The app sends mail through the Gmail API over HTTPS because Railway cannot reliably reach Gmail SMTP ports. `GMAIL_USER` must be the Gmail account that granted the refresh token, and the token must include the `https://www.googleapis.com/auth/gmail.send` scope.
 
 ## Run
 

@@ -32,6 +32,9 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
 const FRONTEND_URL = process.env.FRONTEND_URL || '/';
 const GMAIL_USER = process.env.GMAIL_USER || process.env.SMTP_USER || '';
+const GMAIL_API_CLIENT_ID = process.env.GMAIL_API_CLIENT_ID || GOOGLE_CLIENT_ID;
+const GMAIL_API_CLIENT_SECRET = process.env.GMAIL_API_CLIENT_SECRET || GOOGLE_CLIENT_SECRET;
+const GMAIL_REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN || '';
 const GMAIL_APP_PASSWORD = String(process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || '').replace(/\s/g, '');
 const OTP_TTL_MS = Number(process.env.OTP_TTL_MS || 10 * 60 * 1000);
 const OTP_RESEND_MS = Number(process.env.OTP_RESEND_MS || 60 * 1000);
@@ -151,7 +154,7 @@ app.post('/api/register', async (req, res) => {
     if (db.users.some(user => user.email === email)) {
       return res.status(409).json({ error: 'Email is already registered.' });
     }
-    if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    if (!isGmailDeliveryConfigured()) {
       throw statusError('Gmail OTP is not configured on the server.', 500);
     }
 
@@ -184,7 +187,16 @@ app.post('/api/register', async (req, res) => {
     writeDb(db);
     res.status(202).json({ ok: true, message: 'Code sent.' });
   } catch (error) {
-    res.status(error.status || 400).json({ error: error.message || 'Registration failed.' });
+    const errorDetail = errorDetails(error);
+    console.error('[Nativa register error]', {
+      status: errorDetail.status,
+      message: errorDetail.message,
+      name: errorDetail.name,
+      code: errorDetail.code,
+      stack: errorDetail.stack,
+      email: normalizeEmail(req.body?.email)
+    });
+    res.status(errorDetail.status).json({ error: errorDetail.message });
   }
 });
 
@@ -216,7 +228,7 @@ app.post('/api/request-otp', async (req, res) => {
     if (!isValidEmail(email)) {
       throw statusError('Enter a valid email.', 400);
     }
-    if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
+    if (!isGmailDeliveryConfigured()) {
       throw statusError('Gmail OTP is not configured on the server.', 500);
     }
 
@@ -666,11 +678,11 @@ function now() {
 }
 
 function normalizeCredentials(body = {}) {
-  const name = String(body.name || '').trim();
   const email = normalizeEmail(body.email);
+  const providedName = String(body.name || '').trim();
+  const name = providedName.length >= 2 ? providedName : email.split('@')[0] || 'User';
   const password = String(body.password || '');
 
-  if (name.length < 2) throw statusError('Name must be at least 2 characters.', 400);
   if (!isValidEmail(email)) throw statusError('Enter a valid email.', 400);
   if (password.length < 6) throw statusError('Password must be at least 6 characters.', 400);
 
@@ -854,9 +866,88 @@ async function sendOtpEmail({ to, code }) {
   });
 }
 
-function sendGmailMessage({ to, subject, text }) {
+function isGmailDeliveryConfigured() {
+  return Boolean(
+    GMAIL_USER &&
+    (
+      (GMAIL_API_CLIENT_ID && GMAIL_API_CLIENT_SECRET && GMAIL_REFRESH_TOKEN) ||
+      GMAIL_APP_PASSWORD
+    )
+  );
+}
+
+async function sendGmailMessage(message) {
+  if (GMAIL_API_CLIENT_ID && GMAIL_API_CLIENT_SECRET && GMAIL_REFRESH_TOKEN) {
+    await sendGmailApiMessage(message);
+    return;
+  }
+
+  await sendGmailSmtpMessage(message);
+}
+
+async function sendGmailApiMessage({ to, subject, text }) {
+  const accessToken = await fetchGmailAccessToken();
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      raw: base64UrlEncode(buildGmailApiMessage({ to, subject, text }))
+    })
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw apiError('Gmail API send failed', response, payload);
+  }
+}
+
+async function fetchGmailAccessToken() {
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GMAIL_API_CLIENT_ID,
+      client_secret: GMAIL_API_CLIENT_SECRET,
+      refresh_token: GMAIL_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok || !payload.access_token) {
+    throw apiError('Gmail access token request failed', response, payload);
+  }
+
+  return payload.access_token;
+}
+
+function buildGmailApiMessage({ to, subject, text }) {
+  const headers = [
+    `From: ${mimeHeader('Nativa')} <${GMAIL_USER}>`,
+    `To: <${to}>`,
+    `Subject: ${mimeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit'
+  ];
+  return `${headers.join('\r\n')}\r\n\r\n${String(text || '')}`;
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value, 'utf8')
+    .toString('base64')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '');
+}
+
+function sendGmailSmtpMessage({ to, subject, text }) {
   return new Promise((resolve, reject) => {
     const socket = tls.connect(465, 'smtp.gmail.com', { servername: 'smtp.gmail.com' });
+    let settled = false;
     let buffer = '';
     const commands = [
       'EHLO nativa.local',
@@ -871,6 +962,20 @@ function sendGmailMessage({ to, subject, text }) {
     ];
     let commandIndex = 0;
 
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error);
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      socket.end();
+      resolve();
+    };
+
     socket.setTimeout(15000);
 
     socket.on('data', chunk => {
@@ -884,15 +989,18 @@ function sendGmailMessage({ to, subject, text }) {
       const status = Number(lastLine.slice(0, 3));
       buffer = '';
 
+      if (!Number.isFinite(status)) {
+        fail(statusError(`Gmail SMTP returned an invalid response: ${lastLine || 'empty response'}`, 502));
+        return;
+      }
+
       if (status >= 400) {
-        socket.destroy();
-        reject(statusError(`Gmail SMTP failed: ${lastLine}`, 502));
+        fail(statusError(`Gmail SMTP failed: ${lastLine}`, 502));
         return;
       }
 
       if (commandIndex >= commands.length) {
-        socket.end();
-        resolve();
+        finish();
         return;
       }
 
@@ -901,10 +1009,12 @@ function sendGmailMessage({ to, subject, text }) {
     });
 
     socket.on('timeout', () => {
-      socket.destroy();
-      reject(statusError('Gmail SMTP timed out.', 504));
+      fail(statusError('Gmail SMTP timed out.', 504));
     });
-    socket.on('error', error => reject(error));
+    socket.on('error', error => {
+      const detail = error?.code || error?.message || error?.name || 'unknown error';
+      fail(statusError(`Gmail SMTP connection failed: ${detail}`, 502));
+    });
   });
 }
 
@@ -990,6 +1100,18 @@ function statusError(message, status) {
   const error = new Error(message);
   error.status = status;
   return error;
+}
+
+function errorDetails(error, fallbackMessage = 'Registration failed.') {
+  const status = Number(error?.status || 0) || 400;
+  const message = String(error?.message || fallbackMessage);
+  return {
+    status,
+    message,
+    name: error?.name || '',
+    code: error?.code || '',
+    stack: error?.stack || ''
+  };
 }
 
 const server = USE_HTTPS
