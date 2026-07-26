@@ -98,7 +98,9 @@ const state = {
   sessions: [],
   currentSessionId: null,
   sessionStartedAt: null,
-  debugOpen: false
+  debugOpen: false,
+  phraseIndex: 0,
+  phraseTimer: null
 };
 
 const SESSIONS_KEY = 'nativa.sessions';
@@ -136,6 +138,7 @@ async function init() {
   createVisualizerBars();
   bindEvents();
   setPhrase(0);
+  startPhraseRotation();
   updateLanguagePair();
   updateVoiceIdStatus();
   setStatus('idle');
@@ -169,7 +172,10 @@ function bindEvents() {
     });
   });
   elements.phraseButtons.forEach(button => {
-    button.addEventListener('click', () => setPhrase(Number(button.dataset.phraseIndex)));
+    button.addEventListener('click', () => {
+      setPhrase(Number(button.dataset.phraseIndex));
+      startPhraseRotation();
+    });
   });
   elements.loginTab.addEventListener('click', () => setAuthMode('login'));
   elements.registerTab.addEventListener('click', () => setAuthMode('register'));
@@ -300,13 +306,22 @@ async function initModelScene(canvas) {
 }
 
 function setPhrase(index) {
-  const phrase = PHRASES[index] || PHRASES[0];
+  state.phraseIndex = Number.isInteger(index) ? index % PHRASES.length : 0;
+  if (state.phraseIndex < 0) state.phraseIndex = 0;
+  const phrase = PHRASES[state.phraseIndex] || PHRASES[0];
   const html = `${escapeHtml(phrase[0])},<br>${escapeHtml(phrase[1])}`;
   if (elements.authPhraseText) elements.authPhraseText.innerHTML = html;
   if (elements.publicPhraseText) elements.publicPhraseText.innerHTML = html;
   elements.phraseButtons.forEach(button => {
-    button.classList.toggle('active', Number(button.dataset.phraseIndex) === index);
+    button.classList.toggle('active', Number(button.dataset.phraseIndex) === state.phraseIndex);
   });
+}
+
+function startPhraseRotation() {
+  window.clearInterval(state.phraseTimer);
+  state.phraseTimer = window.setInterval(() => {
+    setPhrase(state.phraseIndex + 1);
+  }, 3000);
 }
 
 function frameModel(THREE, model) {
