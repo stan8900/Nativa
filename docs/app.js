@@ -7,6 +7,7 @@ const elements = {
   loginTab: document.querySelector('#loginTab'),
   registerTab: document.querySelector('#registerTab'),
   otpTab: document.querySelector('#otpTab'),
+  authInlineLogin: document.querySelector('#authInlineLogin'),
   authNameField: document.querySelector('#authNameField'),
   authName: document.querySelector('#authName'),
   authEmail: document.querySelector('#authEmail'),
@@ -14,6 +15,7 @@ const elements = {
   authOtpField: document.querySelector('#authOtpField'),
   authOtpCode: document.querySelector('#authOtpCode'),
   authOtpButton: document.querySelector('#authOtpButton'),
+  authTerms: document.querySelector('#authTerms'),
   authSubmit: document.querySelector('#authSubmit'),
   authMessage: document.querySelector('#authMessage'),
   googleLoginButton: document.querySelector('#googleLoginButton'),
@@ -138,6 +140,7 @@ function bindEvents() {
   elements.loginTab.addEventListener('click', () => setAuthMode('login'));
   elements.registerTab.addEventListener('click', () => setAuthMode('register'));
   elements.otpTab.addEventListener('click', () => setAuthMode('otp'));
+  elements.authInlineLogin.addEventListener('click', () => setAuthMode('login'));
   elements.authForm.addEventListener('submit', handleAuthSubmit);
   elements.authOtpButton.addEventListener('click', requestOtpCode);
   elements.signOutButton.addEventListener('click', signOut);
@@ -201,6 +204,7 @@ function setAuthMode(mode) {
   elements.authPassword.required = !isOtp;
   elements.authOtpField.classList.toggle('active', isOtp);
   elements.authOtpCode.required = isOtp;
+  elements.authTerms.closest('label').classList.toggle('active', isRegister);
   elements.authPassword.autocomplete = isRegister ? 'new-password' : 'current-password';
   elements.authSubmit.textContent = isOtp ? 'Verify code' : isRegister ? 'Create account' : 'Login';
   setAuthMessage('');
@@ -224,6 +228,10 @@ async function handleAuthSubmit(event) {
       elements.authForm.reset();
       await enterApp(user);
       return;
+    }
+
+    if (state.authMode === 'register' && !elements.authTerms.checked) {
+      throw new Error('Accept the terms to create an account.');
     }
 
     const endpoint = state.authMode === 'register' ? '/api/register' : '/api/login';

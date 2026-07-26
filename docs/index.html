@@ -12,50 +12,76 @@
   <body class="auth-pending">
     <section class="auth-screen" id="authView" aria-label="Authentication">
       <div class="auth-panel">
-        <div class="auth-brand">
-          <div class="logo-mark">N</div>
-          <div>
-            <h1>NATIVA</h1>
-            <p>Secure workspace for your translation sessions</p>
+        <section class="auth-visual-panel" aria-label="Nativa preview">
+          <img src="./Nativa_Login.png" alt="">
+          <div class="auth-visual-overlay"></div>
+          <div class="auth-visual-top">
+            <div class="auth-wordmark">NATIVA</div>
+            <a href="/" class="auth-back-link">Back to website <span>→</span></a>
+          </div>
+          <div class="auth-visual-copy">
+            <p>Capturing voices,<br>Creating memories</p>
+            <div class="auth-slide-dots" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span class="active"></span>
+            </div>
+          </div>
+        </section>
+
+        <div class="auth-form-panel">
+          <div class="auth-brand">
+            <h1>Create an account</h1>
+            <p>Already have an account? <button id="authInlineLogin" type="button">Log in</button></p>
+          </div>
+
+          <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
+            <button class="active" id="loginTab" type="button">Login</button>
+            <button id="registerTab" type="button">Register</button>
+            <button id="otpTab" type="button">OTP</button>
+          </div>
+
+          <form class="auth-form" id="authForm">
+            <label class="auth-name-field" id="authNameField">
+              <span>Name (optional)</span>
+              <input id="authName" name="name" autocomplete="name" placeholder="Your name">
+            </label>
+            <label>
+              <span>Email</span>
+              <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimum 6 characters" required>
+            </label>
+            <label class="auth-otp-field" id="authOtpField">
+              <span>Code</span>
+              <div class="auth-otp-row">
+                <input id="authOtpCode" name="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">
+                <button id="authOtpButton" type="button">Send code</button>
+              </div>
+            </label>
+            <label class="auth-terms">
+              <input id="authTerms" type="checkbox" checked>
+              <span>I agree to the <a href="#" aria-label="Terms and conditions">Terms & Conditions</a></span>
+            </label>
+            <button class="auth-submit" id="authSubmit" type="submit">Login</button>
+            <p class="auth-message" id="authMessage" role="status"></p>
+          </form>
+
+          <div class="auth-divider"><span>Or continue with</span></div>
+
+          <div class="auth-social-row">
+            <a class="google-login-button" id="googleLoginButton" href="/auth/google">
+              <span>G</span>
+              Google
+            </a>
+            <button class="apple-login-button" type="button">
+              <span>●</span>
+              Apple
+            </button>
           </div>
         </div>
-
-        <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
-          <button class="active" id="loginTab" type="button">Login</button>
-          <button id="registerTab" type="button">Register</button>
-          <button id="otpTab" type="button">OTP</button>
-        </div>
-
-        <a class="google-login-button" id="googleLoginButton" href="/auth/google">
-          <span>G</span>
-          Continue with Google
-        </a>
-
-        <div class="auth-divider"><span>or</span></div>
-
-        <form class="auth-form" id="authForm">
-          <label class="auth-name-field" id="authNameField">
-            <span>Name (optional)</span>
-            <input id="authName" name="name" autocomplete="name" placeholder="Your name">
-          </label>
-          <label>
-            <span>Email</span>
-            <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
-          </label>
-          <label>
-            <span>Password</span>
-            <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Minimum 6 characters" required>
-          </label>
-          <label class="auth-otp-field" id="authOtpField">
-            <span>Code</span>
-            <div class="auth-otp-row">
-              <input id="authOtpCode" name="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">
-              <button id="authOtpButton" type="button">Send code</button>
-            </div>
-          </label>
-          <button class="auth-submit" id="authSubmit" type="submit">Login</button>
-          <p class="auth-message" id="authMessage" role="status"></p>
-        </form>
       </div>
     </section>
 
