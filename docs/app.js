@@ -27,6 +27,7 @@ const elements = {
   authSubmit: document.querySelector('#authSubmit'),
   authMessage: document.querySelector('#authMessage'),
   googleLoginButton: document.querySelector('#googleLoginButton'),
+  appleLoginButton: document.querySelector('#appleLoginButton'),
   dashboardView: document.querySelector('#dashboardView'),
   projectView: document.querySelector('#projectView'),
   dashboardHomeButton: document.querySelector('#dashboardHomeButton'),
@@ -147,6 +148,7 @@ async function init() {
   renderLatencyTable();
   setAuthMode('login');
   elements.googleLoginButton.href = `${API_BASE_URL}/auth/google`;
+  elements.appleLoginButton.href = `${API_BASE_URL}/auth/apple`;
 
   try {
     const { user } = await apiJson('/api/me');
@@ -448,8 +450,10 @@ function showAuth() {
   state.currentUser = null;
   document.body.classList.remove('auth-pending', 'authenticated', 'public-active');
   document.body.classList.add('auth-required');
-  if (new URLSearchParams(window.location.search).get('auth') === 'google_error') {
-    setAuthMessage('Google login failed. Check OAuth settings and try again.');
+  const authError = new URLSearchParams(window.location.search).get('auth');
+  if (authError === 'google_error' || authError === 'apple_error') {
+    const provider = authError === 'apple_error' ? 'Apple' : 'Google';
+    setAuthMessage(`${provider} login failed. Check OAuth settings and try again.`);
     window.history.replaceState({}, '', window.location.pathname);
   }
 }

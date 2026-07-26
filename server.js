@@ -30,6 +30,11 @@ const OAUTH_STATE_COOKIE = 'nativa_oauth_state';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/google/redirect`;
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || '';
+const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID || '';
+const APPLE_KEY_ID = process.env.APPLE_KEY_ID || '';
+const APPLE_PRIVATE_KEY = String(process.env.APPLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const APPLE_CALLBACK_URL = process.env.APPLE_CALLBACK_URL || `https://${HOST}:${PORT}/auth/apple/callback`;
 const FRONTEND_URL = process.env.FRONTEND_URL || '/';
 const GMAIL_USER = process.env.GMAIL_USER || process.env.SMTP_USER || '';
 const GMAIL_API_CLIENT_ID = process.env.GMAIL_API_CLIENT_ID || GOOGLE_CLIENT_ID;
@@ -75,6 +80,7 @@ app.post('/api/pipeline', async (req, res) => {
   await proxyRequest(req, res, '/pipeline', { forceContentType: 'audio/wav', exposeXHeaders: true });
 });
 
+app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/auth/google', (req, res) => {
@@ -83,12 +89,7 @@ app.get('/auth/google', (req, res) => {
   }
 
   const state = crypto.randomBytes(24).toString('hex');
-  res.cookie(OAUTH_STATE_COOKIE, state, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: COOKIE_SECURE,
-    maxAge: 1000 * 60 * 10
-  });
+  setOAuthStateCookie(res, state);
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
@@ -99,6 +100,70 @@ app.get('/auth/google', (req, res) => {
   url.searchParams.set('prompt', 'select_account');
 
   res.redirect(url.toString());
+});
+
+app.get('/auth/apple', (req, res) => {
+  if (!isAppleOAuthConfigured()) {
+    return res.status(500).send('Apple OAuth is not configured.');
+  }
+
+  const state = crypto.randomBytes(24).toString('hex');
+  setOAuthStateCookie(res, state);
+
+  const url = new URL('https://appleid.apple.com/auth/authorize');
+  url.searchParams.set('client_id', APPLE_CLIENT_ID);
+  url.searchParams.set('redirect_uri', APPLE_CALLBACK_URL);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('response_mode', 'form_post');
+  url.searchParams.set('scope', 'name email');
+  url.searchParams.set('state', state);
+
+  res.redirect(url.toString());
+});
+
+app.all('/auth/apple/callback', async (req, res) => {
+  try {
+    const expectedState = getCookie(req, OAUTH_STATE_COOKIE);
+    const params = req.method === 'POST' ? req.body : req.query;
+    if (!expectedState || params?.state !== expectedState) {
+      throw statusError('Invalid Apple OAuth state.', 400);
+    }
+    if (!params?.code) {
+      throw statusError('Apple OAuth code is missing.', 400);
+    }
+
+    const profile = await fetchAppleProfile(String(params.code), params.user);
+    const db = readDb();
+    const email = normalizeEmail(profile.email);
+    let user = db.users.find(item => item.email === email);
+
+    if (!user) {
+      user = {
+        id: crypto.randomUUID(),
+        name: profile.name || email.split('@')[0],
+        email,
+        appleId: profile.sub,
+        avatarUrl: '',
+        passwordHash: '',
+        sessions: [],
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(user);
+    } else {
+      user.appleId = user.appleId || profile.sub;
+      user.name = user.name || profile.name || email.split('@')[0];
+    }
+
+    const session = createAuthSession(db, user.id);
+    writeDb(db);
+    clearOAuthStateCookie(res);
+    setSessionCookie(res, session.id);
+    res.redirect(FRONTEND_URL);
+  } catch (error) {
+    console.error('[Nativa Apple OAuth error]', error);
+    clearOAuthStateCookie(res);
+    res.redirect(authErrorUrl('apple_error'));
+  }
 });
 
 app.get(['/auth/google/redirect', '/auth/google/callback'], async (req, res) => {
@@ -142,7 +207,7 @@ app.get(['/auth/google/redirect', '/auth/google/callback'], async (req, res) => 
   } catch (error) {
     console.error('[Nativa Google OAuth error]', error);
     clearOAuthStateCookie(res);
-    res.redirect('/?auth=google_error');
+    res.redirect(authErrorUrl('google_error'));
   }
 });
 
@@ -831,6 +896,118 @@ async function fetchGoogleProfile(code) {
   return profile;
 }
 
+async function fetchAppleProfile(code, rawUser) {
+  const tokenResponse = await fetch('https://appleid.apple.com/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: APPLE_CLIENT_ID,
+      client_secret: createAppleClientSecret(),
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: APPLE_CALLBACK_URL
+    })
+  });
+  const tokenPayload = await readJson(tokenResponse);
+  if (!tokenResponse.ok || !tokenPayload.id_token) {
+    throw apiError('Apple token exchange failed', tokenResponse, tokenPayload);
+  }
+
+  const claims = await verifyAppleIdToken(tokenPayload.id_token);
+  if (!claims.email) {
+    throw statusError('Apple profile did not include an email.', 400);
+  }
+
+  return {
+    sub: claims.sub,
+    email: claims.email,
+    name: appleDisplayName(rawUser)
+  };
+}
+
+function createAppleClientSecret() {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'ES256',
+    kid: APPLE_KEY_ID,
+    typ: 'JWT'
+  };
+  const payload = {
+    iss: APPLE_TEAM_ID,
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60 * 24 * 180,
+    aud: 'https://appleid.apple.com',
+    sub: APPLE_CLIENT_ID
+  };
+  const signingInput = [
+    base64UrlEncode(JSON.stringify(header)),
+    base64UrlEncode(JSON.stringify(payload))
+  ].join('.');
+  const signature = crypto.sign('sha256', Buffer.from(signingInput), {
+    key: APPLE_PRIVATE_KEY,
+    dsaEncoding: 'ieee-p1363'
+  });
+
+  return `${signingInput}.${base64UrlEncodeBuffer(signature)}`;
+}
+
+async function verifyAppleIdToken(idToken) {
+  const [encodedHeader, encodedPayload, encodedSignature] = String(idToken || '').split('.');
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw statusError('Apple returned an invalid identity token.', 400);
+  }
+
+  const header = JSON.parse(base64UrlDecode(encodedHeader).toString('utf8'));
+  const claims = JSON.parse(base64UrlDecode(encodedPayload).toString('utf8'));
+  const response = await fetch('https://appleid.apple.com/auth/keys');
+  const jwks = await readJson(response);
+  if (!response.ok) {
+    throw apiError('Apple key request failed', response, jwks);
+  }
+
+  const jwk = Array.isArray(jwks.keys)
+    ? jwks.keys.find(key => key.kid === header.kid && key.alg === 'RS256')
+    : null;
+  if (!jwk) {
+    throw statusError('Apple signing key was not found.', 400);
+  }
+
+  const isValid = crypto.verify(
+    'sha256',
+    Buffer.from(`${encodedHeader}.${encodedPayload}`),
+    crypto.createPublicKey({ key: jwk, format: 'jwk' }),
+    base64UrlDecode(encodedSignature)
+  );
+  if (!isValid) {
+    throw statusError('Apple identity token signature is invalid.', 400);
+  }
+  if (claims.iss !== 'https://appleid.apple.com' || claims.aud !== APPLE_CLIENT_ID) {
+    throw statusError('Apple identity token audience is invalid.', 400);
+  }
+  if (Number(claims.exp || 0) * 1000 < Date.now()) {
+    throw statusError('Apple identity token expired.', 400);
+  }
+
+  return claims;
+}
+
+function appleDisplayName(rawUser) {
+  if (!rawUser) return '';
+
+  try {
+    const parsed = typeof rawUser === 'string' ? JSON.parse(rawUser) : rawUser;
+    const firstName = String(parsed?.name?.firstName || '').trim();
+    const lastName = String(parsed?.name?.lastName || '').trim();
+    return [firstName, lastName].filter(Boolean).join(' ');
+  } catch {
+    return '';
+  }
+}
+
+function isAppleOAuthConfigured() {
+  return Boolean(APPLE_CLIENT_ID && APPLE_TEAM_ID && APPLE_KEY_ID && APPLE_PRIVATE_KEY);
+}
+
 function sanitizeSessions(sessions) {
   return sessions.map(session => ({
     id: String(session.id || crypto.randomUUID()),
@@ -942,6 +1119,19 @@ function base64UrlEncode(value) {
     .replaceAll('+', '-')
     .replaceAll('/', '_')
     .replace(/=+$/, '');
+}
+
+function base64UrlEncodeBuffer(value) {
+  return Buffer.from(value)
+    .toString('base64')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '');
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value || '').replaceAll('-', '+').replaceAll('_', '/');
+  return Buffer.from(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='), 'base64');
 }
 
 function sendGmailSmtpMessage({ to, subject, text }) {
@@ -1079,12 +1269,31 @@ function clearSessionCookie(res) {
   });
 }
 
+function setOAuthStateCookie(res, state) {
+  res.cookie(OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: COOKIE_SECURE ? 'none' : 'lax',
+    secure: COOKIE_SECURE,
+    maxAge: 1000 * 60 * 10
+  });
+}
+
 function clearOAuthStateCookie(res) {
   res.clearCookie(OAUTH_STATE_COOKIE, {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: COOKIE_SECURE ? 'none' : 'lax',
     secure: COOKIE_SECURE
   });
+}
+
+function authErrorUrl(errorCode) {
+  try {
+    const url = new URL(FRONTEND_URL, `http://${HOST}:${PORT}`);
+    url.searchParams.set('auth', errorCode);
+    return url.toString();
+  } catch {
+    return `/?auth=${encodeURIComponent(errorCode)}`;
+  }
 }
 
 function getCookie(req, name) {
@@ -1126,4 +1335,5 @@ server.listen(PORT, HOST, () => {
   console.log(`Nativa web app running at ${protocol}://${HOST}:${PORT}`);
   console.log(`Nativa ML server expected at ${ML_SERVER_BASE_URL}`);
   if (GOOGLE_CLIENT_ID) console.log(`Google OAuth callback at ${GOOGLE_CALLBACK_URL}`);
+  if (APPLE_CLIENT_ID) console.log(`Apple OAuth callback at ${APPLE_CALLBACK_URL}`);
 });
