@@ -10,6 +10,46 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body class="auth-pending">
+    <main class="public-site" id="publicSite" aria-label="Nativa website">
+      <section class="public-hero" id="website">
+        <nav class="public-nav" aria-label="Website navigation">
+          <div class="auth-wordmark">NATIVA</div>
+          <button class="public-login-button" type="button">Log in</button>
+        </nav>
+        <div class="public-hero-grid">
+          <div class="public-copy">
+            <p class="public-kicker">AI voice translation workspace</p>
+            <h1>Your voice, any language.</h1>
+            <p>Real-time speech translation, voice playback, and session memory for conversations that need to feel natural.</p>
+            <div class="public-actions">
+              <button class="public-login-button primary" type="button">Create account</button>
+              <a href="#publicPhrases">Scroll down</a>
+            </div>
+          </div>
+          <div class="public-visual" aria-label="Nativa 3D preview">
+            <canvas id="publicSceneCanvas"></canvas>
+            <div class="public-visual-glass">
+              <span>Live voice pipeline</span>
+              <strong>STT → Translate → TTS</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="public-phrases" id="publicPhrases" aria-label="Nativa phrases">
+        <div>
+          <p class="public-kicker">Built for natural conversations</p>
+          <h2 id="publicPhraseText">Capturing voices,<br>Creating memories</h2>
+        </div>
+        <div class="phrase-buttons" data-phrase-controls>
+          <button class="active" type="button" data-phrase-index="0" aria-label="Capturing voices, Creating memories"></button>
+          <button type="button" data-phrase-index="1" aria-label="Speak naturally, Travel freely"></button>
+          <button type="button" data-phrase-index="2" aria-label="Your voice, Any language"></button>
+          <button type="button" data-phrase-index="3" aria-label="Real-time words, Human connection"></button>
+        </div>
+      </section>
+    </main>
+
     <section class="auth-screen" id="authView" aria-label="Authentication">
       <div class="auth-panel">
         <section class="auth-visual-panel" aria-label="Nativa preview">
@@ -18,14 +58,15 @@
           <div class="auth-visual-overlay"></div>
           <div class="auth-visual-top">
             <div class="auth-wordmark">NATIVA</div>
-            <a href="/" class="auth-back-link">Back to website <span>→</span></a>
+            <a href="#website" class="auth-back-link" id="authBackLink">Back to website <span>→</span></a>
           </div>
           <div class="auth-visual-copy">
-            <p>Capturing voices,<br>Creating memories</p>
-            <div class="auth-slide-dots" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span class="active"></span>
+            <p id="authPhraseText">Capturing voices,<br>Creating memories</p>
+            <div class="auth-slide-dots phrase-buttons" data-phrase-controls>
+              <button class="active" type="button" data-phrase-index="0" aria-label="Capturing voices, Creating memories"></button>
+              <button type="button" data-phrase-index="1" aria-label="Speak naturally, Travel freely"></button>
+              <button type="button" data-phrase-index="2" aria-label="Your voice, Any language"></button>
+              <button type="button" data-phrase-index="3" aria-label="Real-time words, Human connection"></button>
             </div>
           </div>
         </section>

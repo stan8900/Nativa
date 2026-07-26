@@ -2,8 +2,15 @@ import { health, stt, translate, ttsStream, voiceClone } from './mlClient.js';
 import { runMockPipeline } from './useMockPipeline.js';
 
 const elements = {
+  publicSite: document.querySelector('#publicSite'),
+  publicSceneCanvas: document.querySelector('#publicSceneCanvas'),
+  publicPhraseText: document.querySelector('#publicPhraseText'),
+  publicLoginButtons: document.querySelectorAll('.public-login-button'),
   authView: document.querySelector('#authView'),
   authSceneCanvas: document.querySelector('#authSceneCanvas'),
+  authBackLink: document.querySelector('#authBackLink'),
+  authPhraseText: document.querySelector('#authPhraseText'),
+  phraseButtons: document.querySelectorAll('[data-phrase-index]'),
   authForm: document.querySelector('#authForm'),
   loginTab: document.querySelector('#loginTab'),
   registerTab: document.querySelector('#registerTab'),
@@ -101,6 +108,12 @@ const SILENCE_MS = 500;
 const MIN_RECORDING_MS = 450;
 const SPEECH_THRESHOLD = 0.003;
 const BAR_COUNT = 32;
+const PHRASES = [
+  ['Capturing voices', 'Creating memories'],
+  ['Speak naturally', 'Travel freely'],
+  ['Your voice', 'Any language'],
+  ['Real-time words', 'Human connection']
+];
 
 const K_TESTS = [
   { id: 'K-01', src: 'English', tgt: 'Russian', transcript: 'Hello, my name is John and I want to schedule a meeting' },
@@ -118,9 +131,11 @@ const K_TESTS = [
 init();
 
 async function init() {
-  initAuthScene();
+  initModelScene(elements.authSceneCanvas);
+  initModelScene(elements.publicSceneCanvas);
   createVisualizerBars();
   bindEvents();
+  setPhrase(0);
   updateLanguagePair();
   updateVoiceIdStatus();
   setStatus('idle');
@@ -134,11 +149,28 @@ async function init() {
     const { user } = await apiJson('/api/me');
     await enterApp(user);
   } catch {
-    showAuth();
+    if (window.location.hash === '#website' || window.location.hash === '#publicPhrases') {
+      showPublicSite(window.location.hash);
+    } else {
+      showAuth();
+    }
   }
 }
 
 function bindEvents() {
+  elements.authBackLink?.addEventListener('click', event => {
+    event.preventDefault();
+    showPublicSite('#website');
+  });
+  elements.publicLoginButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      showAuth();
+      setAuthMode(button.classList.contains('primary') ? 'register' : 'login');
+    });
+  });
+  elements.phraseButtons.forEach(button => {
+    button.addEventListener('click', () => setPhrase(Number(button.dataset.phraseIndex)));
+  });
   elements.loginTab.addEventListener('click', () => setAuthMode('login'));
   elements.registerTab.addEventListener('click', () => setAuthMode('register'));
   elements.otpTab.addEventListener('click', () => setAuthMode('otp'));
@@ -193,8 +225,7 @@ function bindEvents() {
   elements.exportCsv.addEventListener('click', exportCsv);
 }
 
-async function initAuthScene() {
-  const canvas = elements.authSceneCanvas;
+async function initModelScene(canvas) {
   if (!canvas) return;
 
   try {
@@ -203,7 +234,7 @@ async function initAuthScene() {
       import('https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js')
     ]);
 
-    const panel = canvas.closest('.auth-visual-panel');
+    const panel = canvas.closest('.auth-visual-panel, .public-visual');
     const renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
@@ -234,7 +265,7 @@ async function initAuthScene() {
     const model = gltf.scene;
     frameModel(THREE, model);
     group.add(model);
-    panel?.classList.add('auth-scene-ready');
+    panel?.classList.add('model-scene-ready');
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -263,9 +294,19 @@ async function initAuthScene() {
       renderer.dispose();
     }, { once: true });
   } catch (error) {
-    console.warn('[Nativa auth 3D fallback]', error);
-    canvas.closest('.auth-visual-panel')?.classList.add('auth-scene-failed');
+    console.warn('[Nativa 3D fallback]', error);
+    canvas.closest('.auth-visual-panel, .public-visual')?.classList.add('model-scene-failed');
   }
+}
+
+function setPhrase(index) {
+  const phrase = PHRASES[index] || PHRASES[0];
+  const html = `${escapeHtml(phrase[0])},<br>${escapeHtml(phrase[1])}`;
+  if (elements.authPhraseText) elements.authPhraseText.innerHTML = html;
+  if (elements.publicPhraseText) elements.publicPhraseText.innerHTML = html;
+  elements.phraseButtons.forEach(button => {
+    button.classList.toggle('active', Number(button.dataset.phraseIndex) === index);
+  });
 }
 
 function frameModel(THREE, model) {
@@ -381,7 +422,7 @@ async function requestOtpCode() {
 async function enterApp(user) {
   state.currentUser = user;
   updateUserProfile();
-  document.body.classList.remove('auth-pending', 'auth-required');
+  document.body.classList.remove('auth-pending', 'auth-required', 'public-active');
   document.body.classList.add('authenticated');
   state.sessions = await loadSessions();
   renderRecentSessions();
@@ -390,12 +431,22 @@ async function enterApp(user) {
 
 function showAuth() {
   state.currentUser = null;
-  document.body.classList.remove('auth-pending', 'authenticated');
+  document.body.classList.remove('auth-pending', 'authenticated', 'public-active');
   document.body.classList.add('auth-required');
   if (new URLSearchParams(window.location.search).get('auth') === 'google_error') {
     setAuthMessage('Google login failed. Check OAuth settings and try again.');
     window.history.replaceState({}, '', window.location.pathname);
   }
+}
+
+function showPublicSite(target = '#website') {
+  state.currentUser = null;
+  document.body.classList.remove('auth-pending', 'authenticated', 'auth-required');
+  document.body.classList.add('public-active');
+  const targetElement = document.querySelector(target) || elements.publicSite;
+  window.requestAnimationFrame(() => {
+    targetElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
 async function signOut() {
