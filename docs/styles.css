@@ -95,19 +95,41 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
+.auth-visual-panel canvas,
 .auth-visual-panel img {
   width: 100%;
   height: 100%;
+  display: block;
+}
+
+.auth-visual-panel canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.auth-visual-panel img {
+  position: absolute;
+  inset: 0;
   object-fit: cover;
   object-position: center;
-  display: block;
   filter: saturate(0.9) contrast(1.03) brightness(0.84);
   transform: scale(1.03);
+  opacity: 0;
+}
+
+.auth-visual-panel.auth-scene-failed canvas {
+  display: none;
+}
+
+.auth-visual-panel.auth-scene-failed img {
+  opacity: 1;
 }
 
 .auth-visual-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   background:
     linear-gradient(180deg, rgba(18, 19, 33, 0.05) 0%, rgba(31, 25, 43, 0.18) 48%, rgba(8, 9, 16, 0.82) 100%),
     linear-gradient(90deg, rgba(38, 31, 56, 0.26), rgba(143, 125, 216, 0.16));
@@ -116,6 +138,7 @@ button {
 .auth-visual-top {
   position: absolute;
   inset: 24px 24px auto;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -149,6 +172,7 @@ button {
 
 .auth-visual-copy {
   position: absolute;
+  z-index: 3;
   left: 50%;
   bottom: 34px;
   width: min(82%, 360px);
@@ -387,11 +411,11 @@ button {
   display: grid;
 }
 
-.auth-terms {
+.auth-form .auth-terms {
   display: none;
 }
 
-.auth-terms.active {
+.auth-form .auth-terms.active {
   display: flex;
   align-items: center;
   gap: 10px;

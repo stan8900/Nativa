@@ -3,6 +3,7 @@ import { runMockPipeline } from './useMockPipeline.js';
 
 const elements = {
   authView: document.querySelector('#authView'),
+  authSceneCanvas: document.querySelector('#authSceneCanvas'),
   authForm: document.querySelector('#authForm'),
   loginTab: document.querySelector('#loginTab'),
   registerTab: document.querySelector('#registerTab'),
@@ -117,6 +118,7 @@ const K_TESTS = [
 init();
 
 async function init() {
+  initAuthScene();
   createVisualizerBars();
   bindEvents();
   updateLanguagePair();
@@ -189,6 +191,100 @@ function bindEvents() {
   });
   elements.runKTests.addEventListener('click', runKTests);
   elements.exportCsv.addEventListener('click', exportCsv);
+}
+
+async function initAuthScene() {
+  const canvas = elements.authSceneCanvas;
+  if (!canvas) return;
+
+  try {
+    const [THREE, { GLTFLoader }] = await Promise.all([
+      import('https://esm.sh/three@0.160.0'),
+      import('https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js')
+    ]);
+
+    const panel = canvas.closest('.auth-visual-panel');
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+      preserveDrawingBuffer: true
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+    camera.position.set(0, 0.35, 4.2);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
+    keyLight.position.set(2.8, 4, 3);
+    scene.add(keyLight);
+    scene.add(new THREE.HemisphereLight(0xefe8ff, 0x171022, 2.8));
+
+    const rimLight = new THREE.PointLight(0x8f7dd8, 3.4, 9);
+    rimLight.position.set(-2.4, 1.8, 2.2);
+    scene.add(rimLight);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync('./nativa_ai_translator_3d.glb');
+    const model = gltf.scene;
+    frameModel(THREE, model);
+    group.add(model);
+    panel?.classList.add('auth-scene-ready');
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect.width));
+      const height = Math.max(1, Math.floor(rect.height));
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
+    resize();
+
+    let rafId = 0;
+    const render = time => {
+      group.rotation.y = Math.sin(time * 0.00035) * 0.16;
+      group.rotation.x = Math.sin(time * 0.00022) * 0.045;
+      renderer.render(scene, camera);
+      rafId = requestAnimationFrame(render);
+    };
+    rafId = requestAnimationFrame(render);
+
+    window.addEventListener('pagehide', () => {
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      renderer.dispose();
+    }, { once: true });
+  } catch (error) {
+    console.warn('[Nativa auth 3D fallback]', error);
+    canvas.closest('.auth-visual-panel')?.classList.add('auth-scene-failed');
+  }
+}
+
+function frameModel(THREE, model) {
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const maxAxis = Math.max(size.x, size.y, size.z) || 1;
+  const scale = 3.05 / maxAxis;
+
+  model.position.sub(center);
+  model.position.y += 0.18;
+  model.scale.setScalar(scale);
+  model.rotation.set(-0.08, -0.38, 0.02);
+  model.traverse(child => {
+    if (!child.isMesh || !child.material) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    child.material.needsUpdate = true;
+  });
 }
 
 function setAuthMode(mode) {
